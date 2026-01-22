@@ -1,0 +1,41 @@
+\chapter{Resumen}
+
+La presente tesis de maestría se enfoca en predecir la evolución morfológica de lesiones tumorales mamarias en imágenes de mastografía digital mediante una red generativa adversarial condicional (cGAN) de arquitectura compacta. El objetivo principal es diseñar y evaluar un modelo capaz de generar imágenes sintéticas que representen pronósticos visuales de las posibles etapas futuras de un tumor observado en mastografías. Para ello, se entrena el cGAN con la base de datos pública CBIS-DDSM, que incluye imágenes de masas mamarias con sus anotaciones correspondientes. La red generadora toma como entrada una imagen inicial de la lesión, junto con información condicional (por ejemplo, un parámetro temporal o características de la tumoración), y produce una imagen proyectada de la misma lesión en una etapa ulterior hipotética.
+
+La arquitectura propuesta está optimizada para ser computacionalmente eficiente, con un número reducido de parámetros que mantiene su capacidad de síntesis realista. Se emplean técnicas como capas convolucionales profundas y conexiones de salto (\textit{skip connections}) para preservar detalles morfológicos relevantes. La red discriminadora, por su parte, evalúa la plausibilidad clínica de las imágenes generadas, asegurando que se alineen con distribuciones reales de tejido mamario. El desempeño del modelo se evalúa mediante métricas de similitud de imagen (SSIM y LPIPS) y validación por expertos radiólogos, garantizando que las imágenes sintéticas sean visualmente creíbles y representen posibles progresiones tumorales válidas.
+
+Los resultados esperados de este estudio incluyen una herramienta automatizada que ayude a anticipar cambios en las características visuales de tumores mamarios a lo largo del tiempo. Esto podría ser valioso para la planificación clínica y el seguimiento de pacientes con cáncer de mama. El modelo cGAN compacto propuesto contribuye a la síntesis de imágenes médicas y demuestra la viabilidad de generar pronósticos visuales en el contexto de la mastografía.
+
+\textbf{Palabras claves:} CBIS-DDSM, Mastografía digital, Progresión morfológica de tumores, Red generativa adversarial condicional (cGAN), Síntesis de imágenes mamarias.
+
+\chapter{Abstract}
+
+This thesis focuses on forecasting the morphological progression of breast tumor lesions in digital mammograms using a compact conditional Generative Adversarial Network (cGAN). The main objective is to design and evaluate a model that generates synthetic mammographic images projecting plausible future stages of a tumor. We train the cGAN on the publicly available CBIS-DDSM dataset of annotated mammograms with tumor masses. The conditional generator receives an initial mammogram of a lesion and a conditioning input (for example, a time parameter or lesion characteristics) to produce a hypothetical future mammogram showing the tumor’s evolution.
+
+The proposed architecture is optimized for computational efficiency, featuring a reduced number of parameters while retaining expressive power. It employs convolutional layers and skip connections to preserve morphological detail. A conditional discriminator assesses the clinical plausibility of the generated images, ensuring they align with realistic breast tissue distributions. Model performance is evaluated using image similarity metrics (SSIM and LPIPS) and expert radiologist review, verifying that the synthetic images are both visually convincing and represent valid tumor progression.
+
+The anticipated outcome of this study is an automated tool that aids in anticipating visual changes in breast tumors over time. This could support clinical planning and monitoring of breast cancer patients. The compact cGAN model contributes to medical image synthesis and demonstrates the feasibility of visual prognosis in mammography.
+
+\textbf{Keywords:} CBIS-DDSM dataset, Conditional generative adversarial network (cGAN), Digital mammography, Image synthesis, Tumor morphological progression.
+
+\chapter{Agradecimientos}
+
+Agradezco profundamente al Instituto Politécnico Nacional por brindarme la oportunidad de realizar mis estudios de posgrado en esta prestigiosa institución, así como a la Secretaría de Ciencia, Humanidades, Tecnología e Innovación (SECIHTI) por la beca otorgada, sin la cual no hubiera sido posible culminar esta etapa formativa.
+
+De manera especial, deseo expresar mi sincero agradecimiento a mis directores de tesis, el Dr. Jesús Yaljá Montiel Pérez y el Dr. Alfonso Rojas Domínguez, por su guía constante, su disposición permanente y sus valiosas observaciones, las cuales fueron fundamentales para orientar y enriquecer el desarrollo de esta investigación.
+
+Asimismo, extiendo un agradecimiento al Dr. Alejandro Becerril Mondragón y a la Dra. Rebeca Campi Caballero por su apoyo, asesoría y aportaciones durante distintas etapas de este trabajo, así como por el interés mostrado en la investigación y las observaciones realizadas, que contribuyeron a fortalecer su enfoque y calidad académica.
+
+Agradezco también al comité académico y a todos los profesores que formaron parte de mi formación durante la maestría, por compartir generosamente sus conocimientos y fomentar en mí una visión crítica y rigurosa de la investigación científica.
+
+A mi familia, expreso mi más profundo agradecimiento por su amor incondicional, su confianza y su respaldo constante, incluso en los momentos más difíciles. Su apoyo emocional ha sido una fuente permanente de motivación y fortaleza para alcanzar esta meta.
+
+Finalmente, agradezco a mis compañeros y amigos por su apoyo, colaboración y compañerismo a lo largo de este proceso.
+
+% \chapter{Notación}
+
+\tableofcontents
+
+\listoffigures
+
+% \listoftables
