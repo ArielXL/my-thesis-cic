@@ -1,0 +1,257 @@
+\chapter{Marco teórico}
+
+En este capítulo se presenta el marco teórico que sustenta la presente investigación, enfocado en las redes generativas adversariales y su aplicación en visión por computadora, particularmente en imágenes de mamografías. Se revisa los conceptos fundamentales de las Redes Generativas Adversariales (GANs) y de las Redes Generativas Adversariales Condicionales (cGANs), detallando su arquitectura y fundamentos teóricos. También se describen las principales funciones de pérdida empleadas para entrenar GANs y cGANs, así como diversas métricas de evaluación comúnmente utilizadas para juzgar la calidad de las imágenes generadas en el contexto de imágenes médicas, entre ellas el Índice de Similitud Estructural (\textit{Structural Similarity Index Measure, SSIM}), la Similitud de Parches de Imágenes Perceptuales Aprendidas (\textit{Learned Perceptual Image Patch Similarity, LPIPS)}), el Coeficiente de Dice (\textit{Dice Score, DS}), la Intersección sobre Unión (\textit{Intersection over Union, IoU}), además de la evaluación cualitativa por parte de radiólogos.
+
+\section{Redes Generativas Adversariales (GANs)}
+
+La idea de las redes generativas adversariales (\textit{Generative Adversarial Networks}) fue propuesta por Ian Goodfellow y su grupo de investigación en 2014, marcando un hito en el campo del aprendizaje profundo generativo \cite{Goodfellow2014}. Una GAN consiste en un modelo generativo que aprende a producir datos sintéticos imitando una distribución de datos reales, mediante un esquema de entrenamiento adversarial en el que dos redes neuronales compiten entre sí. A continuación, se repasan brevemente los orígenes de este concepto, la arquitectura fundamental de las GANs y el marco teórico de juego de suma cero que formaliza su entrenamiento como un problema minimax.
+
+\subsection{Arquitectura generador-discriminador en GANs}
+
+Una red GAN consta de dos componentes principales entrenados de forma simultánea: un generador ($G$) y un discriminador ($D$). El generador es un modelo que toma como entrada un vector de ruido aleatorio (generalmente denotado $z$ y muestreado por una distribución $p_z$) y aprende a transformarlo en una muestra sintética $G(z)$ que imite los datos reales objetivo. Por su parte, el discriminador es un modelo que recibe como entrada una instancia de dato (ya sea real del conjunto de entrenamiento, $x$, o una muestra sintética $G(z)$ generada por $G$) y produce una estimación $D(x)$ de la probabilidad de que dicha instancia provenga de los datos reales en vez de ser generada. Es decir, $D$ actúa como un clasificador binario que intenta distinguir entre datos reales y falsos. Durante el entrenamiento adversarial, ambos modelos se optimizan simultáneamente:
+
+\begin{itemize}
+    \item El generador $G$ ajusta sus parámetros para producir muestras cada vez más realistas que engañen al discriminador.
+    \item El discriminador $D$ ajusta sus parámetros para mejorar su capacidad de detectar las falsificaciones de $G$.
+\end{itemize}
+
+De este modo, $G$ y $D$ están inmersos en un bucle de retroalimentación donde compiten. Las mejoras de $G$ fuerzan a $D$ a volverse mejor en sus discriminaciones, y viceversa. En la práctica, tanto $G$ como $D$ suelen implementarse como redes neuronales profundas, pero en tareas de imágenes se emplean redes convolucionales para ambas, aprovechando su capacidad de extraer y procesar patrones visuales de alta complejidad \cite{Zhang2022}.
+
+La figura \ref{fig:gan_esquema} ilustra el esquema de una GAN típica. El generador $G$ toma un vector de entrada aleatorio $z \sim p_z$ y produce una muestra sintética $G(z)$ en el dominio de los datos reales. El discriminador $D$ recibe tanto muestras reales $x \sim p_{\text{data}}$ (imágenes verdaderas de entrenamiento) como muestras sintéticas $G(z)$, y aprende a clasificarlas emitiendo una probabilidad de que la muestra provenga del conjunto real. El generador $G$ toma un vector de ruido $z$ proveniente de una distribución aleatoria $p_z$ y genera una muestra sintética $G(z)$. Ambos modelos se entrenan conjuntamente de forma adversarial ya que $G$ intenta generar muestras que $D$ clasifique como reales, mientras $D$ se entrena para distinguir cada vez mejor las muestras falsas de $G$ de las reales \cite{zhang2018}.
+
+\begin{figure}[hbtp]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Images/gan_esquema.png}
+    \caption{Esquema del funcionamiento de una GAN \cite{Martinez}.}
+    \label{fig:gan_esquema}
+\end{figure}
+
+\subsection{Juegos de suma cero y algoritmos minimax en GANs}
+
+El marco competitivo entre $G$ y $D$ puede analizarse rigurosamente bajo la teoría de juegos, interpretándolo como un juego de suma cero de dos jugadores \cite{Goodfellow2014}. En un juego de suma cero, la ganancia de un jugador equivale a la pérdida del otro, o sea, el discriminador $D$ busca maximizar su precisión distinguiendo muestras reales de falsas, mientras que el generador $G$ busca minimizar esa precisión (es decir, engañar a $D$ con sus muestras sintéticas). En \cite{Goodfellow2014} se formalizó esta idea definiendo una función objetivo minimax para la pareja $(D,G)$:
+
+\begin{equation}
+    \min_{G} \max_{D} V(D,G) = \mathbb{E}_{x \sim p_{\text{data}}(x)}[\log D(x)] + \mathbb{E}_{z \sim p_z(z)}[\log(1 - D(G(z)))]
+    \label{eq:gan_obj}
+\end{equation}
+donde $p_{\text{data}}(x)$ representa la distribución de probabilidad de los datos reales y $p_z(z)$ es la distribución del ruido de entrada al generador. La ecuación \eqref{eq:gan_obj} describe un juego de optimización de minimax ya que:
+
+\begin{itemize}
+    \item $D$ intenta maximizar el valor esperado $\mathbb{E}[\log D(x) + \log(1 - D(G(z)))]$ (es decir, maximizar su tasa de aciertos clasificando correctamente $x$ como real y $G(z)$ como falso).
+    \item $G$ intenta minimizar ese mismo valor (hacer mínima la capacidad de $D$ de distinguir $G(z)$, o equivalentemente lograr que $D(G(z))$ sea lo más cercano posible a 1).
+\end{itemize}
+
+En términos de teoría de juegos, este es un juego de suma cero cuyo equilibrio ideal corresponde a un \textit{equilibrio de Nash} que ocurre cuando $p_z = p_{\text{data}}$, es decir, cuando la distribución de las muestras generadas $p_z$ coincide exactamente con la distribución de datos reales \cite{Goodfellow2014}. En ese punto teórico, el discriminador ya no puede diferenciar las muestras (su mejor desempeño es asignar $D(x) = 0.5$ a todo), y el generador produce datos realistas perfectos. Para aproximar la solución de este problema minimax en la práctica, se entrena iterativamente a $D$ y $G$ mediante un algoritmo de descenso de gradiente alternado. En cada iteración de entrenamiento:
+
+\begin{enumerate}
+    \item Se actualizan los pesos de $D$ manteniendo $G$ fijo, aumentando la cantidad $\log D(x) + \log(1 - D(G(z)))$ sobre un mini-lote de ejemplos (lo que equivale a que $D$ minimiza su pérdida correspondiente).
+    \item Se actualizan los pesos de $G$ manteniendo $D$ fijo, reduciendo el término $\log(1 - D(G(z)))$ (lo cual equivale a minimizar la pérdida del generador). Este procedimiento alternado aproxima la solución del minimax.
+\end{enumerate}
+
+En resumen, el algoritmo de entrenamiento de una GAN consiste en repetir estos pasos de optimización adversarial hasta que, idealmente, $D$ ya no pueda mejorar su clasificación y $G$ genere datos plausibles. En la práctica, alcanzar el equilibrio perfecto puede ser difícil, pero entrenamientos exitosos logran que las muestras sintéticas sean suficientemente realistas para fines prácticos.
+
+\section{Redes Generativas Adversariales Condicionales}
+
+Aun cuando las GANs han demostrado ser capaces de generar datos realistas, un aspecto limitante del modelo original es la falta de control sobre las características específicas de las muestras generadas. El generador $G$ aprende a imitar la distribución general de los datos, pero el usuario no puede elegir qué tipo concreto de ejemplo sintético obtener. Las Redes Generativas Adversariales Condicionales (cGANs) abordan este problema incorporando información auxiliar en el proceso de generación \cite{Mirza2014}. Básicamente, una cGAN permite guiar la generación de $G$ proporcionándole, aunque según ya sabemos, el ruido es opcional (no es necesario proporcionarlo), una variable $y$ que representa cierta información deseada. Asimismo, $D$ recibe esa información $y$ junto con cada ejemplo para verificar no solo si la imagen es real o falsa, sino si es coherente con la condición indicada. En las siguientes subsecciones se presenta su arquitectura general y las ventajas que ofrecen sobre las GANs tradicionales.
+
+\subsection{Arquitectura de las cGANs}
+
+La arquitectura de una cGAN es muy similar a la de una GAN básica, con la diferencia clave de que tanto el generador como el discriminador reciben la información de condición $y$ como parte de sus entradas. El generador $G$ en una cGAN implementa una función de generación condicionada, denotada $G(z|y)$, lo que significa que su salida depende no solo del ruido $z$ sino también del valor de $y$. En la práctica, esto suele implementarse concatenando el vector $y$ al vector $z$ en la entrada de $G$ (o inyectando $y$ en capas intermedias mediante técnicas como \textit{embeddings} aprendidos o modulación de características). De este modo, $G$ aprende a generar una muestra que refleje la condición proporcionada, si $y$ indica una categoría, $G$ producirá una imagen que pertenezca a esa categoría específica.
+
+Por su parte, el discriminador $D$ de una cGAN recibe igualmente la condición $y$ además de la muestra $x$ que debe clasificar. En lugar de solo decidir si $x$ es real o falsa, el discriminador en una cGAN aprende una función $D(x|y)$ que estima la probabilidad de que $x$ sea un ejemplo real consistente con la condición $y$ frente a ser generado. Para lograrlo, $D$ suele construirse concatenando el vector $y$ con la entrada $x$. Durante el entrenamiento, $D$ recibe parejas $(x, y)$ tanto provenientes del mundo real (imágenes reales con su condición correcta) como parejas $(G(z|y), y)$ donde la imagen es sintética. Su tarea es distinguir unas de otras. En consecuencia, el generador $G$ es penalizado no solo si sus imágenes parecen artificiales, sino también si no corresponden a la condición dada. Esta dinámica fuerza a $G$ a aprender la relación entre $x$ y $y$, las muestras generadas deben parecer reales y a la vez reflejar la condición especificada.
+
+En la figura \ref{fig:cgan_esquema} se muestra cómo el generador recibe $z$ y $y$, donde se produce la imagen sintética $G(z|y)$, el discriminador recibe $G(z|y)$ y $x$ (cada uno con $y$) y aprende a distinguir reales de falsas. El entrenamiento típicamente sigue dos fases: primero se entrena el discriminador usando lotes de datos reales $(x,y)$ y falsos $(G(z|y),y)$, y después se entrena el generador (con el discriminador congelado) para engañarlo. Este proceso adversarial garantiza que $G$ mejore sus muestras sintéticas condicionadas y $D$ afine su juicio de real o falso.
+
+\begin{figure}[hbtp]
+    \centering
+    \includegraphics[width=0.75\textwidth]{Images/cgan_esquema.png}
+    \caption{Diagrama del entrenamiento completo de una cGAN \cite{Martinez}.}
+    \label{fig:cgan_esquema}
+\end{figure}
+
+\subsection{Ventajas de las cGANs sobre las GANs tradicionales}
+
+La incorporación de condiciones en las GANs aporta diversas ventajas frente a la versión clásica:
+
+\begin{itemize}
+    \item Control sobre el contenido generado: Las cGANs permiten especificar el tipo de muestra a generar mediante la entrada $y$. En lugar de obtener salidas aleatorias de la distribución global, el usuario puede indicar que desea una imagen de cierto tipo (una clase específica, una propiedad determinada, etc.). Esto brinda un control fino sobre el contenido del dato sintético. Por ejemplo, en lugar de generar mamografías aleatoriamente, una cGAN podría entrenarse para generar \emph{mamografías con un tumor maligno} cuando $y$ indica ``caso positivo'', o \emph{mamografías normales} cuando $y$ indica ``caso negativo''. De esta manera, se puede dirigir la simulación hacia instancias de interés particular \cite{Mirza2014}.
+    \item Mejor calidad y coherencia mediante información adicional: Al proveer información extra al generador, la tarea de $G$ se vuelve más acotada que en una GAN estándar, lo cual suele facilitar el aprendizaje. $G$ no debe modelar toda la distribución a ciegas, sino que, dado $y$, solo necesita modelar la distribución condicionada a esa situación. Esto tiende a producir muestras de mayor calidad y coherencia interna, pues $G$ cuenta con pistas explícitas sobre qué contenido generar.
+    \item Aplicaciones ampliadas (\textit{image-to-image}): Las cGANs habilitan casos de uso que las GANs no condicionales no podían abordar directamente. Un ejemplo destacado es la traducción de imágenes de un dominio a otro (\textit{image-to-image translation}). En este escenario, la imagen de entrada de un dominio actúa como condición $y$ y el generador aprende a mapearla a otro dominio, por ejemplo, convertir un mapa de segmentación en una imagen de apariencia real (figura \ref{fig:aerial_to_map}), traducir una imagen satelital en un mapa cartográfico (figura \ref{fig:street_scene}), colorear una imagen (figura \ref{fig:black_white_to_color}), obtener una fotografía a partir de un boceto (figura \ref{fig:edges_to_photo}), convertir una fotografía de día en una fotografía de noche (figura \ref{fig:day_to_night}), etc. En \cite{Isola2016} demostraron con \textit{pix2pix} que una cGAN puede aprender este tipo de mapeos bi-modales usando pares de imágenes durante el entrenamiento. De manera similar, en ámbitos como visión médica, se han utilizado cGANs para convertir imágenes entre diferentes modalidades (de resonancia magnética a tomografía) o mejorar la resolución de imágenes de entrada (super-resolución), tareas en las que la imagen original funge como entrada condicional. Ninguna de estas aplicaciones sería posible con una GAN tradicional, que carece de un punto de entrada para datos adicionales.
+    \item Aumento de datos dirigida: Desde la perspectiva práctica de aprendizaje de máquina, un beneficio crucial de las cGANs es la posibilidad de generar datos sintéticos dirigidos a necesidades específicas, lo cual resulta muy útil para aumentar conjuntos de datos desbalanceados. Por ejemplo, si en un conjunto de mamografías hay pocas imágenes de cierto tipo de tumor, se podría entrenar una cGAN donde la condición $y$ indique la categoría de tumor, de modo que el generador pueda sintetizar más ejemplos de esa categoría minoritaria bajo demanda. Al entrenar posteriormente un clasificador con un conjunto de datos ampliado con estas imágenes sintéticas adicionales, se puede mejorar su rendimiento en la clase rara. En general, las cGANs permiten realizar aumento de datos (\textit{data augmentation}) focalizado.
+\end{itemize}
+
+\begin{figure}[!htb]
+    \minipage{0.32\textwidth}
+      \includegraphics[width=\linewidth]{Images/aerial_to_map.png}
+      \caption{Convertir un mapa de segmentación en una imagen de apariencia real.}
+      \label{fig:aerial_to_map}
+    \endminipage \hfill
+    \minipage{0.32\textwidth}
+      \includegraphics[width=\linewidth]{Images/black_white_to_color.png}
+      \caption{Colorear una imagen respetando los bordes.}
+      \label{fig:black_white_to_color}
+    \endminipage \hfill
+    \minipage{0.32\textwidth}
+      \includegraphics[width=\linewidth]{Images/day_to_night.png}
+      \caption{Convertir una fotografía de día en una fotografía de noche.}
+      \label{fig:day_to_night}
+    \endminipage
+\end{figure}
+
+\begin{figure}[!htb]
+    \minipage{0.49\textwidth}
+      \includegraphics[width=\linewidth]{Images/edges_to_photo.png}
+      \caption{Obtener una fotografía a partir de un boceto.}
+      \label{fig:edges_to_photo}
+    \endminipage \hfill
+    \minipage{0.49\textwidth}
+      \includegraphics[width=\linewidth]{Images/street_scene.png}
+      \caption{Traducir una imagen satelital en un mapa cartográfico.}
+      \label{fig:street_scene}
+    \endminipage
+\end{figure}
+
+En síntesis, las cGANs heredan de las GANs la capacidad de generar datos realistas, pero añaden la flexibilidad de controlar y orientar la generación mediante condiciones. Esta combinación ha convertido a las cGANs en herramientas especialmente valiosas cuando se desea síntesis de datos con cierto grado de especificidad o se cuenta con información adicional que se quiere aprovechar. Gracias a estas ventajas, las cGANs han sido adoptadas en múltiples dominios, incluyendo generación de imágenes etiquetadas, conversión de estilos, complementación de imágenes faltantes, y en general cualquier tarea de generación donde se disponga de metadatos o ejemplos asociados que puedan guiar al modelo.
+
+\section{Funciones de pérdida en GANs y cGANs}
+
+El comportamiento y la eficacia de las GANs dependen en gran medida del diseño apropiado de las funciones de pérdida utilizadas para entrenar tanto al generador como al discriminador. En la formulación original de \cite{Goodfellow2014}, las funciones de costo de $G$ y $D$ derivan directamente del objetivo minimax (ecuación \ref{eq:gan_obj}). Sin embargo, se han introducido variaciones y trucos de entrenamiento para mejorar la estabilidad y velocidad de convergencia de las GANs. En esta sección se describen las funciones de pérdida básicas del discriminador y el generador en una GAN estándar, la modificación conocida como pérdida no saturante para el generador, que se emplea comúnmente para evitar gradientes que se desvanecen al inicio del entrenamiento y cómo se extiende la función de pérdida al caso de cGANs, incluyendo consideraciones sobre términos adicionales que suelen incorporarse en escenarios condicionales.
+
+\subsection{Pérdida del discriminador vs. pérdida del generador}
+
+A partir de la función valor $V(D,G)$ del juego minimax (ecuación \ref{eq:gan_obj}), se definen pérdidas separadas para el discriminador y el generador, de forma que ambos puedan optimizarse mediante descenso de gradiente. El discriminador $D$, en cada paso de entrenamiento, busca maximizar la cantidad $\mathbb{E}_{x \sim p_{\text{data}}} [\log D(x)] + \mathbb{E}_{z \sim p_z} [\log(1 - D(G(z)))]$. Equivalentemente, se define su función de pérdida a minimizar como el negativo de esa cantidad:
+
+\begin{equation}
+    \mathcal{L}_D = -\Big( \mathbb{E}_{x \sim p_{\text{data}}} [\log D(x)] + \mathbb{E}_{z \sim p_z} [\log(1 - D(G(z)))] \Big).
+    \label{eq:loss_d}
+\end{equation}
+
+Minimizando $\mathcal{L}_D$, el discriminador mejora en asignar $D(x)$ cercano a 1 para muestras reales $x$ y $D(G(z))$ cercano a 0 para muestras falsas, tal como se pretendía. Por otro lado, el generador $G$ busca minimizar la capacidad del discriminador de identificar sus salidas como falsas. En la formulación original \cite{Goodfellow2014}, la función de costo propuesta para $G$ es
+
+\begin{equation}
+    \mathcal{L}_G = \mathbb{E}_{z \sim p_z} [\log(1 - D(G(z)))]
+    \label{eq:loss_g}
+\end{equation}
+que corresponde a minimizar $\log(1 - D(G(z)))$. Intuitivamente, $G$ está incentivado a generar muestras tal que $D(G(z))$ sea lo más cercano posible a 1 (es decir, que el discriminador se equivoque asignándoles etiqueta de reales). Obsérvese que $D$ y $G$ tienen objetivos opuestos: si $D$ logra clasificar perfectamente las salidas de $G$ como falsas, entonces $D(G(z)) \approx 0$ y la pérdida $\mathcal{L}_G$ de $G$ será alta, por el contrario, si $G$ logra engañar completamente a $D$, entonces $D(G(z)) \approx 1$ y la pérdida de $G$ tenderá al mínimo. Mediante el entrenamiento alternado, $D$ mejora reduciendo $\mathcal{L}_D$ y luego $G$ mejora reduciendo $\mathcal{L}_G$. Este juego definido por las pérdidas $\mathcal{L}_D$ y $\mathcal{L}_G$ es el núcleo del entrenamiento de una GAN.
+
+\subsection{Pérdida no saturante en GANs}
+
+En los primeros experimentos con GANs se observó que utilizar directamente la pérdida $\mathcal{L}_G = \mathbb{E}[\log(1 - D(G(z)))]$ podía conducir a un problema de saturación del generador en las etapas iniciales de entrenamiento \cite{Goodfellow2014}. Esto ocurre cuando el discriminador es muy acertado desde el comienzo: si $D(G(z))$ tiende a valores cercanos a 0 (porque las muestras iniciales de $G$ son claramente artificiales), entonces $\log(1 - D(G(z))) \approx \log(1-0) = 0$ y su gradiente respecto a los parámetros de $G$ se vuelve muy pequeño. En consecuencia, $G$ aprende de forma extremadamente lenta ya que prácticamente no recibe señal de error útil para mejorar (la pérdida está saturada cerca de su mínimo teórico, aun cuando $G$ es muy deficiente).
+
+Para evitar este estancamiento, en \cite{Goodfellow2014} propusieron entrenar al generador con una pérdida no saturante como alternativa. En lugar de minimizar $\log(1 - D(G(z)))$, el generador pasa a maximizar $\log(D(G(z)))$. Esto es equivalente a definir su pérdida como:
+
+\begin{equation}
+    \mathcal{L}_G^{\text{NS}} = -\mathbb{E}_{z \sim p_z} [\log(D(G(z)))]
+    \label{eq:loss_g_ns}
+\end{equation}
+la cual penaliza fuertemente a $G$ cuando $D(G(z))$ es muy pequeño (cuando $D$ está muy seguro de que la muestra es falsa) y en cambio recompensa a $G$ cuando logra elevar $D(G(z))$. En términos prácticos, esta variante proporciona gradientes de mayor magnitud para $G$ cuando más lo necesita (al inicio, cuando $D$ rechaza casi todo lo generado), evitando la región de gradiente casi nulo que ocurre con la función original. Importante resaltar que esta modificación no altera el punto óptimo teórico del juego ya que el equilibrio sigue siendo $D(x) = D(G(z)) = 0.5$ con $p_z = p_{\text{data}}$, pero sí cambia la dinámica de convergencia haciéndola más estable. De hecho, en la mayoría de implementaciones modernas de GAN, la pérdida no saturante para el generador se emplea por defecto dada su efectividad para acelerar el entrenamiento y reducir la incidencia de colapso del generador.
+
+\subsection{Función de pérdida condicional en cGANs}
+
+En una cGAN, las funciones objetivo de generador y discriminador mantienen la misma forma general que en una GAN estándar, con la diferencia de que ahora todas las probabilidades se condicionan con respecto a $y$. El discriminador busca maximizar la probabilidad de asignar la etiqueta correcta a pares $(x, y)$ reales y la etiqueta de falso a pares $(G(z|y), y)$ generados. Formalmente, la función a maximizar por $D$ (o minimizar su negativo como pérdida) puede escribirse como:
+
+\begin{equation}
+    \mathcal{L}_D^{\text{cGAN}} = - \Big( \mathbb{E}_{x \sim p_{data}} [\log(D(x | y))] + \mathbb{E}_{z \sim p_z} [\log(1 - D(G(z | y) | y))] \Big).
+    \label{eq:loss_d_cgan}
+\end{equation}
+
+Análogamente, la pérdida del generador condicionada sería:
+
+\begin{equation}
+    \mathcal{L}_G^{\text{cGAN}} = \mathbb{E}_{z \sim p_z} [\log(1 - D(G(z | y) | y))].
+    \label{eq:loss_g_cgan}
+\end{equation}
+En esencia, $G$ es penalizado si, dado $y$, el discriminador $D$ identifica $G(z|y)$ como una muestra no correspondiente a $y$, igual que antes pero considerando el contexto. Este esquema de pérdidas asegura que el generador aprenda a aprovechar la información $y$ y para minimizar su pérdida, $G$ debe generar datos que $D$ no solo juzgue como verosímiles sino también como compatibles con la condición proporcionada.
+
+Además de la parte estrictamente adversarial, en escenarios condicionales es frecuente incorporar términos de pérdida adicionales que ayuden a guiar la generación de manera más fuerte. Por ejemplo, en tareas donde $y$ es una imagen de entrada, suele añadirse una pérdida de similitud entre la imagen generada y la imagen real objetivo correspondiente. Un caso típico es añadir una pérdida $\mathcal{L}_1$ pixel a pixel entre $G(z|y)$ y la imagen real asociada a $y$, de forma que el generador no solo intenta engañar al discriminador sino también aproximar directamente la verdad de referencia \cite{Isola2016}. Este término condicional explícito (pérdida por reconstrucción) promueve que la salida respete detalles específicos esperados según $y$ con el objetivo de lograr que la cGAN genere imágenes no solo indistinguibles visualmente, sino también fieles a la condición impuesta. Estas modificaciones de pérdida han demostrado mejorar la calidad de los resultados en múltiples aplicaciones condicionales, proporcionando mayor estabilidad al entrenamiento y salidas más útiles para propósitos específicos.
+
+\section{Métricas de evaluación para cGAN en imágenes médicas}
+
+Evaluar la calidad de las imágenes generadas por modelos GAN (y cGAN) es un desafío importante, especialmente en el contexto de imágenes médicas donde se requiere que las imágenes sintéticas no solo sean visualmente realistas, sino que también conserven características relevantes para el diagnóstico. A diferencia de tareas supervisadas clásicas, en las que se puede calcular fácilmente un error promedio contra un valor objetivo, en la generación de imágenes no siempre existe una única verdad absoluta para comparar. Por ello, se han desarrollado diversas métricas cuantitativas que intentan medir diferentes aspectos de la calidad de las imágenes generadas, así como se recurre a evaluaciones cualitativas por expertos humanos para un juicio más integral. A continuación, se describen algunas de las métricas más utilizadas para evaluar cGANs (y GANs en general) aplicadas a generación de imágenes, haciendo énfasis en su interpretación en contextos de imágenes médicas.
+
+\subsection{Índice de Similitud Estructural (SSIM)}
+
+El Índice de Similitud Estructural (\textit{Structural Similarity Index Measure, SSIM}) es una métrica orientada a evaluar la similitud perceptual entre dos imágenes \cite{mudeng2022, Wang2004}. A diferencia de métricas como el error cuadrático medio (MSE) o proporción máxima de señal a ruido (PSNR) que se centran en diferencias absolutas pixel a pixel, SSIM busca imitar el juicio humano sobre si dos imágenes son esencialmente iguales en estructura. Para calcular SSIM, las dos imágenes (una generada y su correspondiente real de referencia) se comparan en ventanas locales, evaluando los tres componentes: luminacia o diferencia en brillo medio (ecuación \ref{eq:luminancia}), contraste o diferencia en desviación estándar (ecuación \ref{eq:contraste}) y estructura o correlación de patrones entre las ventanas de ambas imágenes (ecuación \ref{eq:estructura}) \cite{sarkar2022}. Estos tres factores se combinan en un índice cuyo valor típico se acota entre $0$ y $1$ (siendo $1$ la similitud máxima, cuando ambas imágenes son idénticas).
+
+\begin{equation}
+    SSIM(x, y) = L(x, y) \cdot C(x, y) \cdot S(x, y)
+\end{equation}
+donde:
+\begin{itemize}
+    \item $L(x, y)$ es la función de comparación de luminancia.
+    \item $C(x, y)$ es la función de comparación de contraste.
+    \item $S(x, y)$ es la función de comparación de estructura.
+\end{itemize}
+Estas funciones se definen individualmente de la siguiente manera:
+
+\begin{equation}
+    \label{eq:luminancia}
+    L(x, y) = \dfrac{2\mu_{x}\mu_{y} + C_{1}}{\mu_{x}^{2} + \mu_{y}^{2} + C_{1}}, donde \ \mu_{x} \ y \ \mu_{y} \ son \ los \ valores \ promedio \ de \ las \ ventanas \ x \ e \ y
+\end{equation}
+
+\begin{equation}
+    \label{eq:contraste}
+    C(x, y) = \dfrac{2\sigma_{x}\sigma_{y} + C_{2}}{\sigma_{x}^{2} + \sigma_{y}^{2} + C_{2}}, donde \ \sigma_{x} \ y \ \sigma_{y} \ son \ las \ desviaciones \ estándar \ de \ las \ ventanas \ x \ e \ y
+\end{equation}
+
+\begin{equation}
+    \label{eq:estructura}
+    S(x, y) = \dfrac{\sigma_{xy} + C_{3}}{\sigma_{x} \sigma_{y} + C_{3}}, donde \ \sigma_{xy} \ es \ la \ covarianza \ de \ las \ ventanas \ x \ e \ y
+\end{equation}
+
+\begin{itemize}
+    \item $C_{1} = (K_{1} \cdot L)^{2}$, $C_{2} = (K_{2} \cdot L)^{2}$ y $C_{3} = \dfrac{C_{2}}{2}$ son pequeñas constantes utilizadas para evitar la inestabilidad cuando los denominadores son muy cercanos a cero.
+    \item $L$ es el rango dinámico de los valores de píxeles (comúnmente $255$ para imágenes de $8$ bits).
+    \item $K_{1}$ y $K_{2}$ son constantes pequeñas por defecto (usualmente $K_{1} = 0.01$ y $K_{2} = 0.03$).
+\end{itemize}
+
+Un SSIM más alto indica que la imagen sintética conserva mejor las características estructurales de la imagen real \cite{lee2022, bakurov2022}. Por ejemplo, valores altos de SSIM significan que la disposición de bordes, texturas y contrastes locales en la imagen generada se parece mucho a la de la imagen verdadera, incluso si puede haber diferencias globales de brillo o leves variaciones pixel a pixel. Esta métrica se ha utilizado extensamente en tareas como compresión de imágenes o reconstrucción, porque correlaciona mejor con la calidad visual percibida que métricas basadas solo en error promedio \cite{milovic2025}.
+
+\subsection{Similitud de Parches de Imágenes Perceptuales Aprendidas (LPIPS)}
+
+La Similitud de Parches de Imágenes Perceptuales Aprendidas (\textit{Learned Perceptual Image Patch Similarity, LPIPS}) es una medida de distancia perceptual entre dos imágenes que se basa en las representaciones internas de una red neuronal convolucional preentrenada \cite{zhang2018}. A diferencia de métricas puramente pixel–a–pixel, LPIPS intenta aproximar cómo los seres humanos perciben la similitud visual, midiendo la diferencia entre imágenes en un espacio de características profundas donde ya se han capturado estructuras de alto nivel como texturas, bordes y patrones semánticos. Esto la hace especialmente útil para evaluar imágenes sintéticas generadas por modelos como cGAN, donde el objetivo es que la imagen ``se vea'' realista para un observador humano y no solo que coincida numéricamente píxel a píxel.
+
+En términos generales, LPIPS es una métrica de tipo \emph{full–reference}, es decir, requiere una imagen de referencia $\mathbf{x}$ (considerada como ``real'' o `\textit{ground truth}) y una imagen generada o degradada $\hat{\mathbf{x}}$. Ambas imágenes se pasan por una red convolucional $\phi$ (por ejemplo, AlexNet o VGG) preentrenada en una tarea de clasificación. Para cada capa $l$, se obtienen mapas de características $\phi_l(\mathbf{x})$ y $\phi_l(\hat{\mathbf{x}})$, que se normalizan canal a canal. La distancia LPIPS se calcula como una combinación ponderada de las diferencias en esos mapas de características:
+
+\begin{equation}
+    \mathrm{LPIPS}(\mathbf{x}, \hat{\mathbf{x}}) = \sum_{l} \frac{1}{H_l W_l} \sum_{h=1}^{H_l} \sum_{w=1}^{W_l} \left\| \mathbf{w}_l \odot \big( \hat{\phi}_l(\mathbf{x})_{h,w} - \hat{\phi}_l(\hat{\mathbf{x}})_{h,w} \big) \right\|_2^2,
+\end{equation}
+donde $H_l$ y $W_l$ son las dimensiones espaciales del mapa de características en la capa $l$, $\hat{\phi}_l$ denota las características normalizadas, $\odot$ es el producto elemento a elemento y $\mathbf{w}_l$ son pesos aprendidos que ajustan la contribución de cada canal a partir de juicios humanos de similitud. Estos pesos se entrenan para que la distancia LPIPS se correlacione lo mejor posible con la percepción humana de diferencias entre parches de imágenes.
+
+En cuanto a su rango de valores, LPIPS es una distancia no negativa, por lo que siempre se cumple:
+\begin{equation}
+    \mathrm{LPIPS}(\mathbf{x}, \hat{\mathbf{x}}) \geq 0,
+\end{equation}
+y se tiene $\mathrm{LPIPS}(\mathbf{x}, \hat{\mathbf{x}}) = 0$ si y solo si las imágenes son idénticas en el espacio de características considerado. En muchas implementaciones prácticas, cuando las imágenes se normalizan de manera estándar y se emplean las redes y pesos recomendados por los autores, los valores típicos de LPIPS se encuentran aproximadamente en el intervalo $[0,1]$. Sin embargo, estrictamente hablando, la métrica no está matemáticamente acotada superiormente por 1; el rango efectivo depende de la arquitectura de la red, la normalización y el conjunto de datos. En todo caso, valores más bajos de LPIPS indican mayor similitud perceptual, por lo que los mejores modelos generativos son aquellos que producen imágenes con valores de LPIPS cercanos a $0$ con respecto a su \textit{ground truth}.
+
+La principal utilidad de LPIPS en el contexto de imágenes sintéticas radica en que captura diferencias estructurales y de textura que son relevantes para la percepción humana, pero que pueden pasar desapercibidas o ser mal evaluadas por métricas tradicionales \cite{snell2017}. Al compararlas en un espacio de características profundas entrenadas sobre grandes colecciones de imágenes naturales, suele correlacionar mejor con estas preferencias subjetivas. Por ello, en tareas de traducción de imagen a imagen o síntesis mamográfica con cGAN, es habitual reportar esta métrica junto con otras para obtener una evaluación más completa de la calidad \cite{ghazanfari2023}. Una LPIPS baja sugiere que las imágenes generadas no solo son similares numéricamente, sino también perceptualmente plausibles y coherentes con la anatomía o el contenido esperado en la imagen original.
+
+\subsection{Coeficiente de Dice (DS)}
+
+El coeficiente de Dice (\textit{Dice Score, DS}) es una métrica ampliamente utilizada en tareas de segmentación de imágenes médicas \cite{Taha2015}. Evalúa el grado de solapamiento entre la máscara predicha $X$ y la máscara de referencia $Y$, penalizando tanto los falsos positivos como los falsos negativos. Su rango va de $0$ (sin solapamiento) a $1$ (coincidencia perfecta). Se define como:
+
+\begin{equation}
+    \mathrm{Dice}(X,Y) = \frac{2\,|X \cap Y|}{|X| + |Y|}.
+    \label{eq:ds}
+\end{equation}
+
+En el contexto de lesiones mamarias, un valor cercano a 1 indica que la forma y extensión de la región segmentada por el modelo coincide estrechamente con la región anotada por expertos \cite{eelbode2020}.
+
+\subsection{La Intersección sobre Unión (IoU)}
+
+La métrica Intersección sobre Unión (\textit{Intersection over Union, IoU}) (también llamada Índice de Jaccard) mide el solapamiento relativo entre la región predicha y la referencia, calculando la proporción entre la intersección y la unión de ambas áreas \cite{Bertels2019, Muller2022}. Su valor va de $0$ (sin coincidencia) a $1$ (coincidencia total). Se define como:
+
+\begin{equation}
+    \mathrm{IoU}(X,Y) = \frac{|X \cap Y|}{|X \cup Y|}.
+    \label{eq:iou}
+\end{equation}
+
+IoU es especialmente útil en la evaluación de segmentaciones, ya que refleja la calidad de la predicción considerando toda el área de interés, incluyendo bordes y detalles morfológicos \cite{rezatofighi2019}.
+
+\subsection{Evaluación por expertos radiólogos}
+
+Por último, dada la naturaleza crítica de las imágenes médicas, un componente indispensable de la evaluación de imágenes generadas es la validación por parte de expertos humanos, típicamente radiólogos. Ninguna métrica automatizada captura perfectamente si una imagen parece real desde un punto de vista diagnóstico o si sería útil en un contexto clínico. Por ello, muchos trabajos incorporan experimentos en los que se presentan imágenes sintéticas a radiólogos para que las analicen.
+
+Un tipo común de evaluación es la prueba de Turing visual, dicha prueba consiste en mezclar un conjunto de imágenes reales y sintéticas y se pide a varios radiólogos que identifiquen cuáles son reales y cuáles son falsas, o que califiquen el grado de realismo de cada imagen. Si las imágenes de la cGAN son de alta calidad, los especialistas tendrán dificultades para distinguirlas correctamente de las reales. En un estudio reciente de generación de radiografías de tórax, se reportó que radiólogos torácicos lograron una precisión apenas del 67\% al 70\% al intentar separar imágenes reales de sintéticas \cite{Jang2023}, indicando que las imágenes generadas eran altamente verosímiles.
+
+La evaluación por radiólogos complementa las métricas cuantitativas con una perspectiva cualitativa y centrada en la relevancia clínica. En esta tesis, se considera importante no solo presentar puntuaciones objetivas de calidad para las imágenes generadas por la cGAN, sino también o incluso más importante, argumentar su plausibilidad y potencial utilidad diagnóstica respaldándose en apreciaciones de especialistas.
