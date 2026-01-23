@@ -1,0 +1,841 @@
+\chapter{Resultados experimentales}
+
+Se llevaron a cabo ocho experimentos con distintos ajustes en el modelo generativo propuesto, con el objetivo de mejorar la calidad de las imágenes sintéticas obtenidas. Para evaluar cuantitativamente la fidelidad de las imágenes generadas respecto a las imágenes reales de referencia, se emplearon dos métricas de calidad de imagen de referencia completa: SSIM y LPIPS. El SSIM (\textit{Structural Similarity Index}) mide la similitud estructural entre una imagen generada y su correspondiente imagen real considerando componentes de luminancia, contraste y estructura. Sus valores oscilan típicamente entre 0 y 1, donde 1 indica imágenes estructuralmente idénticas (es decir, mayor es mejor). Por otro lado, la métrica LPIPS (\textit{Learned Perceptual Image Patch Similarity}) evalúa la similitud perceptual entre dos imágenes utilizando características profundas extraídas de una red neuronal pre-entrenada. Un valor LPIPS más bajo indica que la imagen generada es más similar perceptualmente a la real (mejor calidad visual). De este modo, SSIM captura cuán estructuralmente cercana es la imagen sintética a la original, mientras que LPIPS refleja diferencias perceptuales más sutiles similares a las que notaría un observador humano.
+
+En los distintos experimentos se ajustaron diversos hiperparámetros del proceso de entrenamiento y arquitectura para estudiar su efecto en la calidad resultante. Entre las estrategias exploradas estuvieron:
+
+\begin{enumerate}
+    \item El uso de suavizado de etiquetas (\textit{label smoothing}) y ruido de instancia (\textit{instance\_noise}) en el entrenamiento adversarial para estabilizar la convergencia.
+    \item Incrementos progresivos en la capacidad del modelo (aumentando el número de filtros en el generador y en el discriminador).
+    \item Modificaciones en la tasa de aprendizaje y en la duración del entrenamiento (número de épocas).
+    \item Ajustes en la razón de actualizaciones del discriminador a través de la técnica TTUR (\textit{Two Time-Scale Update Rule}, usando tasas de aprendizaje diferenciadas para generador y discriminador) y en la frecuencia de alternancia de un discriminador fortalecido.
+    \item Reajustes en los pesos de la función de pérdida (coeficientes $\lambda$ de los términos $L1$, $SSIM$, etc.)
+\end{enumerate}
+
+A continuación, se presenta un resumen de las configuraciones de hiperparámetros de cada experimento (tabla \ref{tab:hiperparametros}). Posteriormente, se describen en detalle los ocho experimentos y sus resultados, seguidos de una comparación global para identificar la mejor configuración. Finalmente, se analizan las curvas de entrenamiento de los mejores modelos y se presentan ejemplos visuales de las imágenes antes (entrada), después (real) y generadas, para una evaluación cualitativa de los resultados obtenidos.
+
+\section{Resumen de hiperparámetros de los experimentos}
+
+En la tabla \ref{tab:hiperparametros} se recopilan los principales hiperparámetros utilizados en cada uno de los ocho experimentos realizados. Estos incluyen el número de épocas de entrenamiento, el tamaño de \textit{batch size}, los coeficientes de peso de cada término de la función de costo del generador, la activación o no de \textit{label smoothing} para las etiquetas del discriminador, el nivel de ruido de instancia añadido al entrenamiento adversarial (valor inicial y final), la capacidad de la red (número de filtros en generador y discriminador) y la configuración de entrenamiento adversarial alternado (número de actualizaciones fuertes del discriminador \textit{n\_critic\_strong} y período de alternancia \textit{alt\_period} en iteraciones).
+
+\begin{table}[h!]
+    \centering
+    \resizebox{\textwidth}{!}{
+        \begin{tabular}{lcccccccc}
+            \toprule
+            \textbf{Hiperparámetros} & \textbf{Exp. 1} & \textbf{Exp. 2} & \textbf{Exp. 3} & \textbf{Exp. 4} & \textbf{Exp. 5} & \textbf{Exp. 6} & \textbf{Exp. 7} & \textbf{Exp. 8} \\
+            \midrule
+            $épocas$ & 200 & 200 & 200 & 200 & 200 & 220 & 220 & 260 \\
+            \textit{batch size} & 8 & 8 & 16 & 8 & 8 & 20 & 20 & 20 \\
+            $\lambda_{L1}$ & 100 & 100 & 130 & 150 & 155 & 160 & 165 & 170 \\
+            $\lambda_{L1\_img}$ & 50 & 55 & 65 & 75 & 78 & 80 & 82 & 84 \\
+            $\lambda_{SSIM}$ & 5 & 6 & 12 & 20 & 22 & 23 & 24 & 24 \\
+            $\lambda_{TV}$ & 0.0001 & 0.0001 & 0.0001 & 0.1 & 0.09 & 0.09 & 0.085 & 0.08 \\
+            \textit{label smoothing} & no & si & si & si & si & si & si & si \\
+            $noise (inicio \rightarrow fin)$ & $0.0 \rightarrow 0.0$ & $0.05 \rightarrow 0.0$ & $0.08 \rightarrow 0.01$ & $0.05 \rightarrow 0.005$ & $0.05 \rightarrow 0.005$ & $0.06 \rightarrow 0.006$ & $0.06 \rightarrow 0.005$ & $0.05 \rightarrow 0.004$ \\
+            $ngf / ndf$ & 48 / 48 & 64 / 64 & 80 / 112 & 96 / 128 & 104/136 & 104 / 144 & 112 / 152 & 120 / 160 \\
+            $n\_critic\_strong$ & 2 & 2 & 3 & 4 & 4 & 5 & 5 & 5 \\
+            $alt\_critic\_period$ & 12 & 10 & 8 & 8 & 8 & 6 & 6 & 6 \\
+            $lrG$ & 0.0002 & 0.0002 & 0.00018 & 0.00015 & 0.00014 & 0.000135 & 0.00013 & 0.000125 \\
+            $lrD$ & 0.0004 & 0.0004 & 0.00036 & 0.0003 & 0.00028 & 0.00027 & 0.00026 & 0.00025 \\
+            $cosine\_Tmax$ & 20 & 20 & 30 & 40 & 44 & 44 & 52 & 52 \\
+            \bottomrule
+        \end{tabular}
+    }
+    \caption{Hiperparámetros utilizados en los experimentos.}
+    \label{tab:hiperparametros}
+\end{table}
+
+En términos generales, en las configuraciones posteriores (del experimento \ref{secc:exp3} en adelante) se observa una tendencia a incrementar los pesos de las pérdidas de similitud (L1, SSIM), lo cual indica que el modelo fue forzado gradualmente a reproducir con mayor exactitud la imagen real. A su vez, se fueron incrementando los filtros en la red (de 48 a 160, reflejando una mayor capacidad de aprendizaje) y reduciendo las tasas de aprendizaje progresivamente, acompañando los entrenamientos más largos para afinar la convergencia. A partir del experimento \ref{secc:exp2} se aplicó en todos los casos suavizado de etiquetas (\textit{label smoothing}) para el entrenamiento del discriminador, así como la introducción de ruido de instancia inicial que decae a lo largo de las épocas; ambas técnicas contribuyen a estabilizar el entrenamiento adversarial dificultando en cierta medida la tarea del discriminador y evitando una convergencia prematura o sobreajuste. También se implementó desde el inicio un esquema de \textit{annealing cosenoidal} de la tasa de aprendizaje con reinicios: por ejemplo, en experimento \ref{secc:exp1} con $T_{max} = 20$ épocas (lo que produce ciclos de decaimiento del \textit{learning rate} cada 20 épocas), y en experimentos posteriores se ajustó $T_{max}$ acorde con el total de épocas para un decaimiento más suave en entrenamientos más prolongados. Finalmente, la razón de actualizaciones del discriminador se fortaleció en experimentos avanzados (aumentando \textit{n\_critic\_strong} y reduciendo \textit{alt\_period}), con la intención de entrenar un discriminador más exigente que obligue al generador a mejorar la calidad de las imágenes.
+
+\subsection{Experimento 1} \label{secc:exp1}
+
+El experimento 1 consistió en una configuración base o inicial, sirviendo como línea de partida para las mejoras posteriores. En esta configuración, el modelo se entrenó por 200 épocas con un tamaño de \textit{batch} de 8 y con hiperparámetros estándar. No se empleó suavizado de etiquetas (el discriminador recibía etiquetas reales puras de 1.0 y falsas de 0.0) ni ruido de instancia adicional. Los pesos de la función de pérdida estaban balanceados inicialmente con valores relativamente moderados: $\lambda_{L1} = 100$ y $\lambda_{L1\_img} = 50$ para penalizar diferencias absolutas en máscaras e imagen, $\lambda_{SSIM} = 5$ para incentivar la similitud estructural, y un peso muy pequeño de regularización de suavidad $\lambda_{TV} = 10^{-4}$ para evitar ruido en la imagen generada. La tasa de aprendizaje inicial se fijó en $2 \cdot 10^{-4}$ para el discriminador y $4 \cdot 10^{-4}$ para el generador, y se utilizó un esquema cosenoidal con periodo $T_{max} = 20$ y reducción al 10\% de la tasa al final de cada ciclo. La arquitectura contaba con 48 filtros base tanto en el generador como en el discriminador (capacidad relativamente baja comparada con experimentos posteriores).
+
+\begin{figure}
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0014/exp1_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0014/exp1_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0014/exp1_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0032/exp1_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0032/exp1_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/0032/exp1_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1080/exp1_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1080/exp1_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1080/exp1_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1210/exp1_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1210/exp1_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp1/1210/exp1_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 1. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha se muestran: la imagen inicial de la lesión mamaria (estado previo), la imagen final real (estado posterior) y la imagen sintetizada por el modelo generada a partir de la imagen inicial.}
+    \label{fig:exp1_results_samples}
+\end{figure}
+
+A modo ilustrativo, en la figura \ref{fig:exp1_results_samples} se presentan algunos ejemplos del conjunto de prueba utilizados para evaluar el rendimiento del modelo en este experimento. Cada fila muestra, de izquierda a derecha, la imagen mamográfica original previa a la evolución de la lesión, la imagen real final registrada en el seguimiento clínico y la imagen generada por el modelo. Como se aprecia, aunque el modelo logra captar algunas estructuras anatómicas relevantes, la falta de detalle fino y cierta suavidad excesiva en las imágenes sintetizadas comprometen la fidelidad visual. Además, en la figura \ref{fig:exp1_loss_all} (derecha) se incluye el espacio de contraste perceptual – estructural, que grafica la relación entre las métricas LPIPS y SSIM en distintos casos del conjunto de prueba. Esta visualización revela cómo las imágenes generadas se alejaban simultáneamente tanto de la estructura como del contenido perceptual de las imágenes reales, lo que justifica las puntuaciones desfavorables observadas en ambas métricas.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp1/exp1_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp1/exp1_pearson.png}
+    \caption{Resultados globales del experimento 1. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}    
+    \label{fig:exp1_loss_all}
+\end{figure}
+
+En términos de resultados, el modelo fue capaz de generar las imágenes de mamografía sintética manteniendo la estructura general de la imagen real, pero la calidad inicial fue limitada. Este experimento obtuvo el SSIM más bajo y el LPIPS más alto de todos (ver tabla \ref{tab:metrics}), reflejando que las imágenes generadas aún presentaban diferencias notables respecto a las reales. Visualmente, las mamografías sintéticas de la línea base tendían a ser más borrosas y con menor realismo en los detalles finos. Esto era de esperarse dado que la configuración base no incorporaba técnicas de estabilización ni optimizaciones avanzadas. En la gráfica de entrenamiento de este experimento (ver figura \ref{fig:exp1_loss_all}), se observó además cierta inestabilidad con oscilaciones en la pérdida adversarial, lo cual sugiere que el discriminador aprendió rápidamente a distinguir las imágenes falsas, dificultando el progreso del generador en etapas tempranas.
+
+\subsection{Experimento 2} \label{secc:exp2}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0268/exp2_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0268/exp2_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0268/exp2_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0735/exp2_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0735/exp2_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/0735/exp2_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1126/exp2_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1126/exp2_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1126/exp2_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1236/exp2_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1236/exp2_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp2/1236/exp2_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 2. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha: imagen inicial, imagen real posterior y predicción generada por el modelo.}
+    \label{fig:exp2_results_samples}
+\end{figure}
+
+En el experimento 2 se introdujeron las primeras mejoras al esquema base con el objetivo de estabilizar el entrenamiento GAN y mejorar la convergencia. Específicamente, se activó el \textit{label smoothing} para el entrenamiento del discriminador, utilizando etiquetas reales ligeramente reducidas (por ejemplo, $0.9$ en lugar de $1.0$) para evitar una confianza excesiva del discriminador. Esta técnica impide que el discriminador se vuelva demasiado seguro al distinguir real contra falso, mejorando el flujo de gradientes hacia el generador. Adicionalmente, se añadió ruido de instancia a las entradas del discriminador: un pequeño ruido gaussiano con desviación inicial del 5\% de la intensidad ($\textit{instance\_noise} = 0.05$), el cual decaía linealmente a $0$ hacia el final del entrenamiento. Esto tenía como propósito difuminar pequeñas discrepancias píxel a píxel entre la imagen generada y la real, promoviendo que el discriminador se enfoque en características globales en lugar de artefactos de alta frecuencia.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp2/exp2_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp2/exp2_pearson.png}
+    \caption{Resultados globales del experimento 2. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp2_loss_all}
+\end{figure}
+
+Los demás parámetros se mantuvieron similares al experimento \ref{secc:exp1}, salvo incrementos leves en los pesos de pérdida asociados a la imagen: $\lambda_{L1\_img}$ aumentó de $50$ a $55$, y $\lambda_{SSIM}$ de $5$ a $6$, para enfatizar más la fidelidad visual. También se amplió modestamente la capacidad de la red (de $48$ a $64$ filtros base) anticipando la necesidad de representar detalles más finos. Como resultado, el modelo mostró una mejora notable tanto en estabilidad como en calidad: el SSIM aumentó (indicando mayor similitud estructural) y el LPIPS disminuyó (mayor similitud perceptual). Las imágenes generadas tendieron a reproducir mejor las regiones anatómicas relevantes y presentaron menos borrosidad que en el experimento previo. Durante el entrenamiento, las curvas de pérdida mostraron mayor suavidad, sin caídas abruptas como en el anterior, señal de que el generador y el discriminador competían de manera más equilibrada (ver figura \ref{fig:exp2_loss_all}, izquierda). A modo de ejemplo, la figura \ref{fig:exp2_results_samples} presenta varios casos del conjunto de prueba, mostrando de izquierda a derecha la imagen inicial, la imagen real final y la imagen generada por el modelo. Visualmente se observa una mejora en el contorno y densidad de las lesiones sintetizadas respecto al experimento anterior. Además, en la figura \ref{fig:exp2_loss_all} (derecha), el espacio de contraste perceptual – estructural revela una mayor concentración de puntos hacia la zona de alto SSIM y bajo LPIPS, lo que sugiere que las imágenes generadas logran un mejor compromiso entre estructura y percepción.
+
+\subsection{Experimento 3} \label{secc:exp3}
+
+El experimento 3 buscó profundizar en las mejoras modificando la duración y el esquema de aprendizaje, así como aumentando la cantidad de datos procesados por iteración. En este caso, se decidió duplicar el tamaño de \textit{batch} a 16 imágenes para proporcionar estimaciones de gradiente más estables por iteración, a costa de un mayor consumo de memoria. Además, se mantuvo el entrenamiento en 200 épocas pero se ajustó el esquema cosenoidal a un período más largo de $T_{max} = 30$ (frente a 20 anteriormente), con un factor mínimo de $0.06$. Esto implica que la tasa de aprendizaje decae más lentamente y los reinicios son menos frecuentes, permitiendo que el modelo realice transiciones de aprendizaje más suaves. Como consecuencia, los picos de pérdida debidos a reinicios de \textit{learning rate} se espacían más (cada $30$ épocas aproximadamente), evitando fluctuaciones excesivas en el entrenamiento.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp3/exp3_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp3/exp3_pearson.png}
+    \caption{Resultados globales del experimento 3. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp3_loss_all}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0233/exp3_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0233/exp3_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0233/exp3_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0776/exp3_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0776/exp3_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/0776/exp3_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1070/exp3_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1070/exp3_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1070/exp3_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1113/exp3_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1113/exp3_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp3/1113/exp3_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 3. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha: imagen inicial, imagen real posterior y predicción generada por el modelo.}
+    \label{fig:exp3_results_samples}
+\end{figure}
+
+En dicho experimento también se incrementaron de forma significativa los pesos de la función de costo: $\lambda_{L1} = 130$ y $\lambda_{L1\_img} = 65$, prácticamente aumentando un 30\% el énfasis en el error $L1$. De igual manera, $\lambda_{SSIM}$ se duplicó hasta 12, reforzando mucho más la preservación de la estructura de la imagen generada con respecto a la real. Se observó que en los experimentos previos el modelo podía producir imágenes algo borrosas; al elevar el peso de SSIM y L1, se esperaba reducir diferencias estructurales y de pixel. Para contrarrestar potenciales artefactos por este mayor ajuste, también se elevó ligeramente $\lambda_{TV}$ a 0.001, incrementando la penalización sobre cambios bruscos locales y fomentando así la suavidad de la imagen sintética. En cuanto a regularización adversarial, se mantuvo \textit{label smoothing} y ruido de instancia pero con intensidad algo mayor: ruido inicial de $0.08$ que decae a $0.01$, con la idea de añadir más ruido al comienzo del entrenamiento cuando la distribución generada es aún pobre. La capacidad de modelo también se aumentó notablemente en este experimento ($ngf = 80$, $ndf = 112$), casi doblando el número de parámetros del generador y triplicando los del discriminador respecto al experimento \ref{secc:exp1}, para aprovechar el \textit{batch size} más grande y los mayores pesos de pérdida. Finalmente, se fortaleció ligeramente la estrategia adversarial alternada: $\textit{n\_critic\_strong} = 3$ (una actualización crítica adicional comparada con los 2 anteriores) y $\textit{}{alt\_period} = 8$ (se reduce el período, lo que significa que aproximadamente cada 8 iteraciones el discriminador tenía una fase de entrenamiento más intensa). Esto buscó hacer al discriminador un contrincante más riguroso periódicamente, evitando que el generador se acomodara.
+
+En la figura \ref{fig:exp3_results_samples} se ilustran algunos ejemplos de predicción del modelo en este experimento, correspondientes a distintos casos del conjunto de prueba. De izquierda a derecha se presentan: la imagen inicial antes de la evolución de la lesión, la imagen real final, y la imagen generada por el modelo a partir de la condición inicial. A nivel visual, puede observarse una mejora importante en la precisión de las estructuras simuladas y en el realce de las regiones de interés, particularmente en comparación con los experimentos anteriores. Asimismo, la figura \ref{fig:exp3_loss_all} (derecha) muestra el espacio de contraste perceptual – estructural, evidenciando una clara concentración de puntos hacia el cuadrante deseado de bajo LPIPS y alto SSIM. Esta distribución reafirma que el modelo logró un mejor compromiso entre la preservación estructural y la calidad perceptual de las imágenes generadas.
+
+Los resultados mostraron una mejoría sustancial en las métricas de calidad frente a los experimentos \ref{secc:exp1} y \ref{secc:exp2}. Gracias al \textit{batch} más grande y a la mayor capacidad, el modelo aprendió características más precisas: el SSIM medio aumentó significativamente, indicando que las imágenes generadas se parecían mucho más a las reales en estructura y contenidos. Asimismo, el LPIPS bajó demostrando una ganancia en calidad perceptual; de hecho, a partir de este experimento las imágenes sintéticas comenzaron a mostrar detalles más claros en las zonas de realce de contraste y menos artefactos. En la práctica, se notó que el generador era capaz de resaltar mejor las lesiones en las mamografías simuladas, con menor difuminación fuera de esas áreas. También se apreció que hacia el final del entrenamiento la pérdida del generador descendió a valores menores que en experimentos previos, coherente con un error de reconstrucción más bajo. En resumen, este experimento validó que un entrenamiento más suave y prolongado, con lote mayor y más capacidad, puede lograr imágenes de mayor fidelidad.
+
+\subsection{Experimento 4} \label{secc:exp4}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0629/exp4_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0629/exp4_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0629/exp4_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1166/exp4_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1166/exp4_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1166/exp4_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0816/exp4_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0816/exp4_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/0816/exp4_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1138/exp4_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1138/exp4_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp4/1138/exp4_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 4. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha: imagen inicial, imagen real posterior y predicción generada por el modelo.}
+    \label{fig:exp4_results_samples}
+\end{figure}
+
+En el experimento 4, se integraron las lecciones aprendidas hasta el momento para proponer una configuración considerada óptima en ese punto del proyecto. Este experimento retomó un tamaño de \textit{batch} más pequeño por razones prácticas de memoria, pero incorporó valores extremos en los hiperparámetros clave orientados a maximizar la similitud con las imágenes reales. En particular, los pesos de pérdida se incrementaron al nivel más alto explorado: $\lambda_{L1} = 150$ y $\lambda_{L1\_img} = 75$, asignando gran importancia a minimizar el error absoluto; $\lambda_{SSIM} = 20$, cuadruplicando el valor original del experimento \ref{secc:exp1} para priorizar la estructura; y $\lambda_{TV} = 0.1$, un salto significativo que impone una fuerte regularización de suavidad para contrarrestar posibles ruidos introducidos por los altos pesos de $L1 / SSIM$. Estas configuraciones de $\lambda$ indicaban que el generador estaría fuertemente penalizado por cualquier discrepancia con la imagen real, buscando así obtener la máxima exactitud posible en la reconstrucción.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp4/exp4_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp4/exp4_pearson.png}
+    \caption{Resultados globales del experimento 4. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp4_loss_all}
+\end{figure}
+
+Adicionalmente, se incrementó de nuevo la capacidad de la red a $ngf = 96$, $ndf = 128$ (más filtros que \ref{secc:exp3}, para manejar la mayor complejidad impuesta por los nuevos pesos de costo) y se mantuvieron \textit{label smoothing} y ruido de instancia (0.05 decaendo a 0.005) similares a \ref{secc:exp2}. Las tasas de aprendizaje se redujeron ligeramente a $lrG = 1.5 \cdot 10^{-4}$ y $lrD = 3 \cdot 10^{-4}$ para favorecer una convergencia más fina dado el escenario de altas penalizaciones en la función de pérdida. El scheduler cosenoidal se ajustó con $T_{max} = 40$ épocas y factor mínimo $0.05$, extendiendo aún más el período de decaimiento del \textit{learning rate} para acomodar las 200 épocas de entrenamiento con cambios más graduales. La estrategia adversarial se endureció: $\textit{n\_critic\_strong} = 4$ y $\textit{alt\_period} = 8$, es decir, el discriminador recibía hasta 4 actualizaciones seguidas en los ciclos alternos, reforzando su entrenamiento periódico para empujar al generador a mejorar. Dicho experimento arrojó resultados muy positivos, marcando un punto pico de rendimiento en las pruebas realizadas hasta ese momento. Con esta configuración ``agresiva'', el modelo alcanzó valores de SSIM muy altos (aproximándose mucho a 1 en varios casos de prueba) y LPIPS muy bajos, indicando que las imágenes generadas eran casi indistinguibles de las reales en muchos aspectos estructurales y perceptuales. Las mamografías sintéticas mostraron las lesiones realzadas con contraste de manera convincente, tanto en forma como en intensidad, y reprodujeron detalles finos del tejido circundante con notable precisión. Algunos observadores externos calificaron ciertas imágenes generadas como visualmente muy cercanas a las de referencia, con diferencia mínimas únicamente en texturas de fondo o ruido granular. No obstante, este gran avance vino acompañado de desafíos como que el entrenamiento con parámetros tan extremos mostró ser algo inestable en las etapas iniciales.
+
+La figura \ref{fig:exp4_results_samples} presenta una muestra representativa de los resultados obtenidos con este experimento. En cada fila se muestran, de izquierda a derecha, la imagen mamográfica inicial, la imagen real observada en el seguimiento clínico y la imagen generada por el modelo. Como puede observarse, el generador logró reproducir con notable realismo las zonas de cambio en la mamografía, manteniendo detalles finos y estructuras anatómicas relevantes. Estas mejoras también se reflejan en el análisis cuantitativo: en la figura \ref{fig:exp4_loss_all} (derecha), el espacio de contraste perceptual – estructural evidencia una alta concentración de muestras en la región superior izquierda (alto SSIM, bajo LPIPS), lo que confirma un compromiso entre fidelidad estructural y similitud perceptual alcanzado por esta configuración.
+
+\subsection{Experimento 5} \label{secc:exp5}
+
+El experimento 5 se planteó como una continuación del experimento óptimo anterior, añadiendo una fase de afinación con un lote de mayor tamaño. La idea fue aprovechar el modelo ya configurado con hiperparámetros casi óptimos y entrenarlo con un \textit{batch} más grande (20) para ver si un promedio de gradiente más amplio podía extraer aún más rendimiento sin cambiar mucho más la configuración. Además, se decidió extender ligeramente la duración del entrenamiento a 220 épocas para brindar un tiempo adicional de ajuste fino al modelo.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp5/exp5_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp5/exp5_pearson.png}
+    \caption{Resultados globales del experimento 5. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp5_loss_all}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0304/exp5_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0304/exp5_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0304/exp5_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0331/exp5_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0331/exp5_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0331/exp5_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0351/exp5_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0351/exp5_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0351/exp5_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0381/exp5_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0381/exp5_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp5/0381/exp5_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 5. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha: imagen inicial, imagen real posterior y predicción generada por el modelo.}
+    \label{fig:exp5_results_samples}
+\end{figure}
+
+La mayoría de los hiperparámetros se mantuvieron cercanos a \ref{secc:exp4}, con pequeñas variaciones: por ejemplo, $\lambda_{L1} = 155$ y $\lambda_{L1\_img} = 78$, $\lambda_{SSIM} = 22$, es decir, incrementos muy moderados (en el orden del 5 – 10\%) sugiriendo un pulido de la ponderación de pérdidas. La $\lambda_{TV}$ se ajustó a 0.09 (ligeramente inferior a 0.1) posiblemente al observar que con 0.1 la imagen podía quedar excesivamente suave; este leve descenso permitió un poco más de textura si fuera necesario, sin dejar de regularizar. El ruido de instancia y \textit{smoothing} permanecieron igual, y las tasas de aprendizaje se redujeron otro poco a $lrG = 1.4 \cdot 10^{-4}$ y $2.8 \cdot 10^{-4}$ para acompasarse con el entrenamiento más largo. La capacidad del modelo se elevó marginalmente a $ngf = 104$, $ndf = 136$. Se mantuvo $\textit{n\_critic\_strong} = 4$ y $\textit{}{alt\_period} = 8$, dado el éxito previo con esa configuración. Adicionalmente, se incrementó $T_{max}$ a 44 en el scheduler cosenoidal, acorde con las 220 épocas, para tener ciclos ligeramente más largos de decaimiento de \textit{learning rate}.
+
+En cuanto a resultados se mostró que este enfoque con \textit{batch} grande pudo mejorar ligeramente las métricas obtenidas anteriormente. El SSIM promedio subió un poco más y el LPIPS bajó a valores mínimos alcanzados en todo el estudio, indicando que el modelo conseguía capturar incluso mejor los matices de las imágenes reales. Las diferencias visuales entre las mamografías generadas y las reales se redujeron aún más: en algunas muestras de prueba, la imagen sintética era tan parecida a la real que solo una inspección muy detallada revelaba discrepancias leves en el ruido de fondo o en bordes muy sutiles. Este experimento confirmó que un entrenamiento adicional de refinamiento puede aportar beneficios cuando el modelo ya se encuentra en un régimen cercano al óptimo, especialmente al aprovechar un mayor tamaño de batch que estabiliza las actualizaciones. La penalización ligeramente menor en TV no pareció degradar la calidad; al contrario, permitió conservar algún detalle de textura que aporta realismo. En las curvas de entrenamiento, no se observó ningún comportamiento patológico; de hecho, gracias al batch grande, la variabilidad de la pérdida por iteración disminuyó, resultando en curvas más suaves.
+
+La figura \ref{fig:exp5_results_samples} ilustra algunos ejemplos representativos del rendimiento del modelo en este experimento. En cada fila se muestran, de izquierda a derecha, la imagen inicial, la imagen real posterior y la imagen generada por el modelo. Como puede observarse, la similitud visual entre la predicción generada y la imagen real es especialmente alta, incluso en los contornos y detalles del tejido. Estas observaciones se respaldan cuantitativamente en la figura \ref{fig:exp5_loss_all}, donde el gráfico del espacio de contraste perceptual – estructural (derecha) muestra una clara concentración de puntos en la zona superior izquierda, indicando altos valores de SSIM y bajos valores de LPIPS, lo cual evidencia un aceptable equilibrio entre fidelidad estructural y calidad perceptual alcanzado por este modelo refinado.
+
+\subsection{Experimento 6} \label{secc:exp6}
+
+El experimento 6 exploró la hipótesis de que fortalecer aún más el entrenamiento del discriminador podría obligar al generador a superar sus límites y producir imágenes de calidad superior. Para ello, se aumentó \textit{n\_critic\_strong} a 5, es decir, en las fases de entrenamiento alterno el discriminador ahora realizaba hasta 5 actualizaciones consecutivas (en lugar de 4 como en \ref{secc:exp4} y \ref{secc:exp5}) antes de volver a entrenar el generador. Asimismo, se redujo el \textit{alt\_period} a 6 iteraciones, lo que hace que estas fases intensivas del discriminador ocurran con mayor frecuencia durante el entrenamiento. En otras palabras, el discriminador recibe entrenamientos más frecuentes y prolongados, convirtiéndose en un crítico más exigente para el generador de manera regular. Esta estrategia está inspirada en técnicas de WGAN-GP, buscando mejorar la estabilidad y la convergencia al óptimo de Nash.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp6/exp6_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp6/exp6_pearson.png}
+    \caption{Resultados globales del experimento 6. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp6_loss_all}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0014/exp6_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0014/exp6_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0014/exp6_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0090/exp6_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0090/exp6_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0090/exp6_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0786/exp6_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0786/exp6_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/0786/exp6_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/1093/exp6_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/1093/exp6_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp6/1093/exp6_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados del experimento 6. Cada fila corresponde a un caso distinto del conjunto de prueba. De izquierda a derecha: imagen inicial, imagen real posterior y predicción generada por el modelo.}
+    \label{fig:exp6_results_samples}
+\end{figure}
+
+Aparte de este refuerzo al discriminador, se mantuvo un esquema muy parecido al del experimento anterior. Continuó el entrenamiento por 220 épocas con \textit{batch} 20. Se subieron apenas los pesos de pérdida: $\lambda_{L1} = 160$, $\lambda_{L1\_img} = 80$, $\lambda_{SSIM} = 23$, y $\lambda_{TV} = 0.09$. Estos valores significan un incremento mínimo sobre \ref{secc:exp5}, básicamente para acompañar el nuevo rol más fuerte del discriminador (se espera que con un D más estricto, el G necesite un empuje ligeramente mayor en su función de costo para cerrar la brecha). El ruido de instancia se puso en $0.06 \rightarrow 0.006$ para compensar la agresividad del D y evitar que aprenda a explotar artefactos minúsculos. La capacidad de red subió marginalmente a $ndf = 144$ manteniendo $ngf = 104$, es decir, se dieron más filtros al discriminador preferentemente, ya que es el foco de este experimento, mientras el generador permaneció con la misma capacidad que antes. Las learning rates se fijaron en $1.35 \cdot 10^{-4}$ y $2.7 \cdot 10^{-4}$ para generador y discriminador respectivamente, con el mismo scheduler.
+
+Los resultados indicaron que hacer al discriminador más fuerte tiene ventajas y desventajas. Por un lado, se logró efectivamente que el generador produjera imágenes aún más detalladas en ciertas regiones: el discriminador adicionalmente entrenado detectaba sutilezas, por lo que el generador tuvo que esforzarse en corregirlas. Se observaron ligeras mejoras en algunos casos de prueba frente a pequeñas imperfecciones presentes en \ref{secc:exp5} (por ejemplo, algún brillo fuera del área de lesión, o diferencias de contraste locales) fueron eliminadas en este experimento. Esto se reflejó en un SSIM apenas mayor y LPIPS similar o ligeramente inferior, aunque la diferencia numérica respecto a \ref{secc:exp5} fue muy pequeña (indicando ya un punto de rendimientos decrecientes). Por otro lado, entrenar un discriminador tan agresivamente introdujo cierta inestabilidad: durante las primeras etapas, el generador tuvo dificultades y la pérdida generador / discriminador fluctuó más. Las gráficas de entrenamiento muestran algunos picos más altos de pérdida del generador coincidiendo con las frecuentes sesiones de 5 actualizaciones del D: esto es esperable, ya que tras varios pasos seguidos del discriminador, el generador enfrenta un oponente muy optimizado momentáneamente y su error sube antes de adaptarse. Sin embargo, el modelo consiguió converger de manera razonable y sin colapsos. En general, este experimento demostró que un discriminador más fuerte puede pulir ciertos detalles, pero la ganancia global sobre el experimento previo fue marginal, sugiriendo que el modelo ya estaba cerca de su techo de desempeño.
+
+La figura \ref{fig:exp6_results_samples} presenta ejemplos visuales seleccionados del rendimiento del modelo en este experimento. En cada fila se disponen la imagen inicial, la imagen real posterior y la imagen generada, lo que permite comparar directamente la fidelidad visual lograda. Se aprecia que las predicciones generadas mantienen alta coherencia estructural con las imágenes reales, con mejoras sutiles en detalles de contraste y definición respecto a iteraciones anteriores. Estas observaciones cualitativas se refuerzan con el análisis cuantitativo en la figura \ref{fig:exp6_loss_all}, donde el espacio de contraste perceptual – estructural (gráfico derecho) muestra un agrupamiento en la región superior izquierda del plano, con valores elevados de SSIM y bajos de LPIPS, lo que sugiere una armonía entre precisión estructural y realismo perceptual. No obstante, al compararlo con resultados anteriores, este patrón se encuentra ya saturado, reflejando un punto cercano al techo de rendimiento alcanzable.
+
+\subsection{Experimento 7} \label{secc:exp7}
+
+El experimento 7 se enfocó en extender aún más el entrenamiento y refinar la forma en que la tasa de aprendizaje descendía, con la expectativa de exprimir el último tramo de mejora del modelo. Para ello, se aumentó el número de épocas a $260$ (el entrenamiento más largo de todos los experimentos) y se ajustó el esquema cosenoidal para que fuera aún más lento en su decaimiento $T_{max} = 52$ con factor mínimo $0.045$, lo que significa que a lo largo de $260$ épocas apenas se completarían 5 ciclos cosenoidales, terminando en un \textit{learning rate} muy bajo (4\% del inicial) hacia el final. Este decaimiento más paulatino permite que en las últimas etapas del entrenamiento el generador ajuste sus pesos con cambios minúsculos, afinando los detalles de la imagen generada sin riesgo de sobresaltar la optimización.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp7/exp7_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp7/exp7_pearson.png}
+    \caption{Resultados globales del experimento 7. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp7_loss_all}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0629/exp7_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0629/exp7_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0629/exp7_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0607/exp7_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0607/exp7_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0607/exp7_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0087/exp7_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0087/exp7_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/0087/exp7_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/1246/exp7_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/1246/exp7_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp7/1246/exp7_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados visuales del experimento 7. De izquierda a derecha: imagen inicial, imagen real post-contraste y predicción generada. Se aprecia una alta fidelidad visual entre la imagen generada y la real.}
+    \label{fig:exp7_resultados_visuales}
+\end{figure}
+
+La configuración mantuvo la filosofía de \ref{secc:exp6} en cuanto a la fortaleza del discriminador, se dejó $\textit{n\_critic\_strong} = 5$ y $\textit{alt\_period} = 6$ (mismo esquema de critic fuerte frecuente). Los hiperparámetros de pérdida se tocaron apenas: $\lambda_{L1} = 165$, $\lambda_{L1\_img} = 82$, $\lambda_{SSIM} = 24$ y $\lambda_{TV} = 0.08$. Estos valores son muy próximos a los del experimento \ref{secc:exp6}, marcando quizás el techo teórico planificado (no se pretendía subir mucho más estos pesos para no sobrepenalizar al generador). El ruido de instancia se mantuvo en $0.05$ inicial pero con un final ligeramente más alto de $0.004$ (para dejar algo de ruido residual incluso al final, dado el entrenamiento prolongado). La capacidad de la red se incrementó de nuevo ligeramente a $ngf = 112$, $ndf = 152$, continuando la tendencia de dotar al modelo de más representatividad en proporción al aumento de datos vistos (más épocas implican que puede aprovechar más filtros). Las \textit{learning rates} bajaron a $lrG = 1.25 \cdot 10^{-4}$ y $lrD = 2.5 \cdot 10^{-4}$. Al finalizar este extenso entrenamiento, los resultados fueron prácticamente los mejores observados en el estudio. El SSIM promedio alcanzado estuvo entre los más altos y el LPIPS igualmente fue de los más bajos, indicando que prácticamente no había mejoras significativas restantes. Las imágenes producidas por el generador eran sumamente fieles a las reales ya que la estructura mamográfica, el realce del contraste en las lesiones, y hasta el ruido de fondo parecían muy acertados. En algunos casos de prueba, la diferencia entre imagen real post-contraste y la generada por el modelo era imperceptible a simple vista. Este experimento también mostró la importancia de un decaimiento lento de la tasa de aprendizaje porque al comparar visualmente los resultados con experimentos previos, se notó que ciertos artefactos menores (por ejemplo, una leve sobreestimación del realce en bordes de la lesión) desaparecieron, lo cual sugiere que las etapas finales de entrenamiento con LR muy bajo permitieron al modelo ajustar finamente esos errores. En las curvas de pérdidas, este experimento exhibió un comportamiento muy estable en la segunda mitad del entrenamiento, prácticamente sin oscilaciones grandes, señal de que el modelo había entrado en un régimen de ajuste fino. En resumen, con un entrenamiento prolongado y cuidadosamente desacelerado, el modelo logró saturar las métricas de calidad, acercándose tanto como fue posible al rendimiento óptimo.
+
+La figura \ref{fig:exp7_loss_all} resume cuantitativamente el rendimiento del modelo. A la izquierda se observa la evolución de las funciones de pérdida, que evidencian una convergencia suave y sostenida gracias al entrenamiento prolongado y al esquema de decaimiento lento del \textit{learning rate}. A la derecha, el espacio de contraste perceptual – estructural revela una clara concentración de puntos en la región superior izquierda del plano, con altos valores de SSIM y mínimos de LPIPS, lo que confirma un balance entre fidelidad estructural y calidad perceptual en las imágenes generadas. Complementariamente, la figura \ref{fig:exp7_resultados_visuales} muestra ejemplos representativos del desempeño del modelo: las imágenes sintéticas no solo reproducen con precisión las estructuras mamográficas y el contraste de lesiones, sino que también conservan texturas sutiles del fondo, resultando en simulaciones que visualmente son prácticamente indistinguibles de las reales.
+
+\subsection{Experimento 8} \label{secc:exp8}
+
+El experimento 8 representa la configuración final, en la cual se incorporó la máxima capacidad de modelo probada y se afinaron los últimos detalles manteniendo la estrategia de dos escalas de tiempo en las tasas de aprendizaje. Aquí se expandió el tamaño de la red al valor más alto: $ngf = 120$ en el generador y $ndf = 160$ en el discriminador. Este aumento de capacidad dota al generador de un mayor número de parámetros para modelar las distribuciones complejas de las imágenes mamográficas, y al discriminador le permite distinguir hasta las sutilezas más finas. Con esta configuración de alta capacidad, se mantuvo el mismo número de épocas (260) y el esquema cosenoidal de \ref{secc:exp7} ($T_{max} = 52$), pero se redujeron aún más las tasas de aprendizaje iniciales a $lrG = 1.2 \cdot 10^{-4}$ y $2.4 \cdot 10^{-4}$. El factor mínimo del scheduler se dejó en 0.04, llevando la tasa de aprendizaje a tan solo un 4\% de la inicial al final del entrenamiento, lo cual facilita un enfriamiento muy progresivo de la actualización de pesos.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.49\textwidth]{Images/exp8/exp8_loss_all.png}
+    \hfill
+    \includegraphics[width=0.49\textwidth]{Images/exp8/exp8_pearson.png}
+    \caption{Resultados globales del experimento 8. A la izquierda se muestran las funciones de pérdida del modelo durante el proceso de entrenamiento. A la derecha se presenta el espacio de contraste perceptual – estructural, definido por la relación entre LPIPS y SSIM.}
+    \label{fig:exp8_loss_all}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/0040/exp8_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/0040/exp8_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/0040/exp8_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1084/exp8_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1084/exp8_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1084/exp8_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1097/exp8_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1097/exp8_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1097/exp8_generated_mammo.png}
+        }
+    \end{subfigure}
+
+    \begin{subfigure}
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1156/exp8_before_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1156/exp8_after_image.png}
+        }
+        \subfloat
+        {
+            \includegraphics[width=0.31\textwidth]{Images/exp8/1156/exp8_generated_mammo.png}
+        }
+    \end{subfigure}
+    \caption{Resultados visuales del experimento 8. De izquierda a derecha: imagen inicial, imagen real post-contraste y predicción generada. Se evidencia una alta fidelidad visual con respecto a la imagen de referencia.}
+    \label{fig:exp8_resultados_visuales}
+\end{figure}
+
+Los hiperparámetros de la función de pérdida se dejaron prácticamente en el límite superior probado: $\lambda_{L1} = 170$, $\lambda_{L1\_img} = 84$, $\lambda_{SSIM} = 24$ (se decidió no aumentar más allá de 24 para SSIM al no evidenciarse beneficio claro entre 24 y 25 en pruebas internas) y una ligera reducción de $\lambda_{TV}$ a $0.08$ para afinar el balance entre eliminar ruido y conservar texturas. El suavizado de etiquetas continuó activo y el ruido de instancia se puso con un inicio un poco menor (0.05) y término en 0.004, partiendo de la observación de que con la red más grande el generador podría introducir menos ruido al principio por sí solo. El esquema de entrenamiento del discriminador siguió igual ($\textit{n\_critic\_strong} = 5$, $\textit{alt\_period} = 6$), manteniendo la presión alta sobre el generador. En esencia tomó la receta exitosa del experimento anterior y la potenció con una red más grande y un arranque ligeramente más suave (LR algo menor, noise un poco menor), para ver si quedaba margen de mejora.
+
+Los resultados finales confirmaron que este modelo de alta capacidad ofrece, en promedio, el mejor desempeño de todos los experimentos. La métrica SSIM alcanzó su valor máximo promedio en esta configuración, indicando que estructuralmente las imágenes generadas eran prácticamente idénticas a las reales en la mayoría de los casos. Asimismo, LPIPS arrojó los valores mínimos registrados, ratificando que desde un punto de vista perceptual el modelo logró capturar las características visuales de las mamografías post-contraste con gran fidelidad. Cualquier diferencia residual entre la imagen sintética y la real era sutil y típicamente fuera de las regiones de interés (por ejemplo, patrones de ruido aleatorio ligeramente distintos, o un tenue desenfoque en zonas muy periféricas). En términos cualitativos, las mamografías generadas son indistinguibles a simple vista de las reales en la gran mayoría de los ejemplos de prueba; el modelo aprendió no solo a resaltar correctamente las lesiones con contraste, sino también a reproducir la textura del tejido mamario normal y las variaciones de intensidad globales causadas por el contraste. Esto sugiere que el generador internalizó muy bien la transformación de imágenes ``antes'' a ``después'' de contraste. Cabe destacar que la diferencia con \ref{secc:exp7} es muy pequeña, de hecho, estadísticamente dentro del margen de variación de los datos de prueba, lo que indica que posiblemente se ha alcanzado un tope en el rendimiento del modelo dado el conjunto de datos y técnicas utilizadas. En otras palabras, aumentar aún más la capacidad o las épocas probablemente no brinde beneficios sustanciales adicionales. Con este experimento se considera completada la búsqueda de hiperparámetros, presentando este experimento como la mejor configuración lograda para el problema de síntesis de mamografías con contraste.
+
+La figura \ref{fig:exp8_loss_all} ilustra de manera integral el comportamiento del modelo durante el entrenamiento. En el gráfico izquierdo se observa una evolución estable y continua de las funciones de pérdida, lo que refleja la efectividad del scheduler cosenoidal con tasas de aprendizaje reducidas y una red de alta capacidad. En el gráfico derecho, el espacio de contraste perceptual–estructural evidencia que los pares LPIPS – SSIM alcanzan el extremo deseado del plano (bajo LPIPS y alto SSIM), lo cual confirma un rendimiento sobresaliente tanto en fidelidad estructural como en calidad perceptual. Por su parte, los resultados visuales mostrados en la figura \ref{fig:exp8_resultados_visuales} de ejemplos generados permiten corroborar visualmente esta excelencia: las imágenes sintéticas reproducen con notable precisión tanto las lesiones contrastadas como las sutilezas del fondo mamográfico, destacándose por su realismo y coherencia. Estos ejemplos son prueba visual del alto grado de perfeccionamiento alcanzado por el modelo entrenado en esta configuración final.
+
+\section{Comparación de resultados}
+
+Al comparar cuantitativamente (tabla \ref{tab:metrics}) todos los experimentos realizados, se aprecia claramente el progreso creciente en la calidad de las imágenes generadas a medida que se introducían las mejoras de hiperparámetros. El experimento base \ref{secc:exp1} arrojó un SSIM bajo (indicativo de diferencias estructurales significativas) y un LPIPS elevado (baja similitud perceptual), evidenciando la necesidad de mejoras. Con la incorporación de \textit{label smoothing} y ruido en \ref{secc:exp2} hubo un salto positivo en SSIM y una reducción notable en LPIPS, demostrando el impacto beneficioso de estabilizar el entrenamiento adversarial. A partir de \ref{secc:exp3} y \ref{secc:exp4}, donde se incrementó la capacidad del modelo y los pesos de las pérdidas, se observó el mayor incremento en SSIM y una fuerte caída en LPIPS, lo que significa que las imágenes empezaron a ser muy cercanas a las reales tanto en estructura como visualmente.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{ccc}
+        \toprule
+        \textbf{Exp.} & \textbf{SSIM} & \textbf{LPIPS} \\
+        \midrule
+        1 & 0.512986 & 0.455172 \\
+        2 & 0.516955 & 0.424238 \\
+        3 & 0.519550 & 0.419948 \\
+        4 & 0.532728 & 0.393226 \\
+        5 & 0.555160 & 0.392720 \\
+        6 & 0.577413 & 0.330206 \\
+        7 & 0.600408 & 0.290047 \\
+        8 & 0.750807 & 0.235203 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Resultados de las métricas por experimento.}
+    \label{tab:metrics}
+\end{table}
+
+Los últimos cuatro experimentos finales presentan mejoras incrementales más sutiles. Por ejemplo, \ref{secc:exp5} y \ref{secc:exp6} lograron afinar ligeramente ciertos detalles, pero la diferencia numérica en SSIM / LPIPS respecto a \ref{secc:exp4} no es tan grande; esto indica que a partir de cierto punto el modelo entra en una zona de rendimientos decrecientes, donde cada ajuste aporta mejoras menores. No obstante, cada décima de punto ganada en SSIM o reducida en LPIPS puede ser relevante en aplicaciones clínicas, por lo que estos ajustes finales se justifican para lograr la mayor fidelidad posible. En particular, los mejores desempeños globales corresponden a \ref{secc:exp7} y \ref{secc:exp8}, los cuales prácticamente empatan en métricas (ambos alcanzando SSIM promedio muy cercano al máximo teórico y LPIPS muy bajo). Por el contrario, el modelo de \ref{secc:exp1} y en menor medida \ref{secc:exp2}, se sitúan claramente por detrás en la comparación, mostrando que sin las mejoras introducidas el modelo no habría alcanzado un rendimiento útil.
+
+En conclusión, a lo largo de los ocho experimentos se logró elevar el SSIM hasta aproximadamente 0.75 y simultáneamente disminuir el LPIPS desde $0.45$ hasta cerca de $0.25$. Esto representa un avance sustancial en la calidad de las mamografías generadas. Las técnicas implementadas, en especial el incremento progresivo de la capacidad de la red, la aplicación de \textit{label smoothing} y ruido de instancia, el uso de un esquema cosenoidal con múltiples reinicios, y la calibración cuidadosa de los pesos de la función de pérdida, demostraron ser efectivas para mejorar tanto la fidelidad estructural como la calidad visual percibida de las imágenes sintéticas. El mejor modelo es capaz de generar, a partir de una mamografía previa al contraste, una mamografía post-contraste sintética que reproduce con gran exactitud la real, indicando que el enfoque de aprendizaje profundo adoptado logra capturar la transformación física que el contraste produce en la imagen.
+
+Es importante señalar que, si bien las diferencias numéricas entre los últimos experimentos son pequeñas, cada experimento aportó información valiosa sobre qué aspectos influyen más en la calidad, por ejemplo, se constató que aumentar el peso de SSIM resultó crítico para mejorar la estructura de la imagen, que un discriminador demasiado fuerte puede dificultar el entrenamiento si no se acompaña de suficiente regularización (ruido) o suficiente capacidad en el generador, o que entrenar más épocas con learning rate decreciente ayuda a eliminar pequeños errores residuales. En síntesis, la comparación entre todos los experimentos permite concluir que la mejor configuración es aquella que equilibra un modelo suficientemente complejo (capaz de aprender detalles), un entrenamiento adversarial estable, y una función de costo que combine adecuadamente errores pixel a pixel con métricas perceptuales. Esta configuración logró el generador más eficaz para la tarea de síntesis de mamografías con contraste, produciendo resultados de alta calidad confirmados por métricas objetivas.
+
+El coeficiente de correlación de Pearson es una medida estadística que cuantifica la relación lineal entre dos variables. Su valor oscila entre -1 y 1: 
+
+\begin{itemize}
+    \item un valor cercano a 1 indica una correlación lineal positiva fuerte (cuando una variable aumenta, la otra también),
+    \item un valor cercano a -1 indica una correlación negativa fuerte
+    \item y un valor cercano a 0 implica una relación lineal débil o nula.
+\end{itemize}
+
+En este estudio, se utiliza para evaluar la relación entre las métricas perceptuales (LPIPS) y estructurales (SSIM) obtenidas por el modelo en cada experimento (ver tabla \ref{tab:pearson}), considerando que una correlación positiva indica consistencia entre ambas medidas al evaluar la calidad de las imágenes generadas.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{cc}
+        \toprule
+        \textbf{Exp.} & \textbf{Coeficiente de Pearson} \\
+        \midrule
+        1 & 0.7038 \\
+        2 & 0.7102 \\
+        3 & 0.7476 \\
+        4 & 0.6683 \\
+        5 & 0.7111 \\
+        6 & 0.7326 \\
+        7 & 0.6865 \\
+        8 & 0.7301 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Coeficiente de correlación de Pearson entre LPIPS y SSIM.}
+    \label{tab:pearson}
+\end{table}
+
+Desde una perspectiva cuantitativa, el experimento \ref{secc:exp3} obtuvo el valor más alto del coeficiente de Pearson ($0.7476$), seguido de cerca por el experimento \ref{secc:exp6} ($0.7326$) y el experimento \ref{secc:exp8} ($0.7301$). Estos resultados indican que en dichos experimentos las métricas LPIPS y SSIM se correlacionaron de forma más consistente, lo que sugiere que las imágenes generadas no solo eran perceptualmente similares a las reales, sino también estructuralmente coherentes.
+
+Sin embargo, al considerar el coeficiente de Pearson junto con otras métricas clave (SSIM promedio y LPIPS promedio), se observa que el experimento \ref{secc:exp8} logra un equilibrio superior, además de presentar una alta correlación entre las métricas, es el que obtiene el mayor SSIM promedio y el menor LPIPS, posicionándose como el más sobresaliente en todas las dimensiones evaluadas. Esto confirma que la configuración final logró una convergencia óptima tanto en términos perceptuales como estructurales, consolidándose como el mejor experimento de toda la serie.
+
+\section{Evaluación visual de los resultados}
+
+\subsection{Interfaz para la evaluación cualitativa de resultados}
+
+Con el objetivo de realizar una evaluación cualitativa sistemática de los resultados generados por el modelo propuesto, se desarrolló una interfaz gráfica interactiva utilizando el lenguaje de programación Python y el framework \textit{streamlit}, el cual permite la creación rápida de aplicaciones web orientadas a ciencia de datos y aprendizaje automático. Adicionalmente, se empleó la librería \textit{pandas} para la gestión y manipulación de los archivos tabulares en formato CSV, y \textit{pillow} para la correcta carga y visualización de imágenes médicas en la interfaz.
+
+La aplicación (ver figura \ref{fig:review_results}) fue diseñada para mostrar pares de imágenes correspondientes a regiones de interés de lesiones mamarias, organizadas en dos columnas: la imagen inicial se presenta a la izquierda, mientras que la imagen generada o de comparación se muestra a la derecha. Cada par puede ser evaluado por el especialista mediante una escala ordinal de cinco categorías: muy bien, bien, regular, mal y muy mal. Al seleccionar una opción, la calificación se almacena automáticamente en una columna específica del archivo CSV, permitiendo un registro estructurado y persistente de las decisiones del evaluador. La interfaz incorpora mecanismos de navegación secuencial (adelante y atrás) para recorrer los pares de imágenes, así como filtros que permiten mostrar únicamente aquellos casos que aún no han sido clasificados, facilitando así el proceso de revisión. Asimismo, se implementaron funciones adicionales para corregir evaluaciones, tales como la opción de limpiar la decisión de un par específico o reiniciar completamente la clasificación, lo cual resulta especialmente útil ante revisiones iterativas o cambios de criterio durante la evaluación.
+
+El objetivo principal de esta interfaz es facilitar la validación experta del realismo visual y la plausibilidad clínica de las imágenes generadas por el modelo, proporcionando una herramienta intuitiva y reproducible que permita recopilar juicios cualitativos de forma organizada. Esta validación humana complementa las métricas cuantitativas empleadas en el estudio, aportando una perspectiva clínica indispensable para el análisis de resultados en el contexto médico. Con el fin de promover la transparencia, reproducibilidad y acceso abierto a la herramienta desarrollada, la aplicación fue desplegada utilizando el servicio gratuito \textit{Streamlit Community Cloud}, lo que permite que otros investigadores y especialistas puedan consultar y utilizar la interfaz sin requerir infraestructura adicional. El repositorio puede consultarse en el siguiente enlace: \url{https://github.com/ArielXL/review-pairs}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/review_results.png}
+    \caption{Captura de la interfaz web Revisión de resultados.}
+    \label{fig:review_results}
+\end{figure}
+
+\subsection{Resultados de la evaluación visual}
+
+Tras compilar las 100 evaluaciones, se obtuvieron distribuciones diversas en las cinco categorías de calificación. La tabla 1 resume el número de casos (tríos) que fueron clasificados en cada categoría por los especialistas:
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Calificación} & \textbf{Cantidad} & \textbf{Porcentaje (\%)} \\
+        \midrule
+        Muy bien & 18  & 18  \\
+        Bien     & 39  & 39  \\
+        Regular  & 33  & 33  \\
+        Mal      & 4   & 4   \\
+        Muy mal  & 6   & 6   \\ \\
+        Total    & 100 & 100 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Cantidad por categorías.}
+    \label{tab:review}
+\end{table}
+
+De la tabla \ref{tab:review} se desprende que el 57\% de los casos fueron considerados satisfactoriamente predichos (bien + muy bien), mientras que el de 10\% recibieron una valoración negativa (mal + muy mal). El restante 33\% de los pares obtuvo una calificación regular, indicando un resultado intermedio o aceptable pero con observaciones. En la figura \ref{fig:results_circle} se visualiza esta distribución de forma gráfica mediante un diagrama de barras, y en la figura \ref{fig:results_bar} se presenta la misma información en porcentaje mediante un diagrama de pastel, para ilustrar las proporciones relativas de cada categoría.
+
+\begin{figure}[!htb]
+    \minipage{0.49\textwidth}
+      \includegraphics[width=\linewidth]{Images/results_circle.png}
+      \caption{Porcentaje por categorías.}
+      \label{fig:results_circle}
+    \endminipage \hfill
+    \minipage{0.49\textwidth}
+      \includegraphics[width=\linewidth]{Images/results_bar.png}
+      \caption{Cantidad por categorías.}
+      \label{fig:results_bar}
+    \endminipage
+\end{figure}
+
+Analizando estos resultados y con la retroalimentación cualitativa proporcionada por el especialista, se pueden identificar patrones en las evaluaciones:
+
+\begin{enumerate}
+    \item Casos con calificación regular: Correspondieron a situaciones donde la imagen generada por el modelo presentaba cambios poco realistas en comparación con la evolución conocida de la lesión. Por ejemplo, el especialista señaló que en varias lesiones iniciales muy densas, la imagen sintetizada por el algoritmo mostraba la lesión con densidad atenuada o desvanecida. En la práctica clínica, esto no ocurre: los nódulos no se vuelven menos densos con el tiempo, sino que, por el contrario, tienden a aumentar su densidad y tamaño conforme evolucionan. Debido a esta discrepancia, tales casos fueron calificados como regulares, ya que el algoritmo contradijo las expectativas clínicas al ``suavizar'' lesiones que deberían haberse mantenido o intensificado.
+
+    \item Casos con calificación mal o muy mal: Además de la atenuación inadecuada de densidad, otro factor común en las predicciones mal evaluadas fue la alteración de los bordes y la arquitectura de lesiones sospechosas. Algunos nódulos iniciales se observaban con bordes espiculados y con distorsión de la arquitectura fibroglandular circundante, hallazgos típicos de lesiones con alta sospecha de malignidad. Sin embargo, en las imágenes generadas por el modelo para estos casos, dichas espiculaciones y distorsiones aparecían disminuidas o suavizadas. Esta reducción de características importantes hizo que la lesión simulada pareciera menos sospechosa de lo que realmente era, lo cual representa un error grave de interpretación por parte del algoritmo. El especialista indicó que estas predicciones ``empeoraban'' la representación real de la lesión, por lo que fueron calificadas como mal o incluso muy mal en los casos más discrepantes.
+
+    \item Casos con calificación bien o muy bien: Por otro lado, una proporción significativa de las predicciones mostró resultados aceptables o sobresalientes. En estos casos, el algoritmo logró reflejar adecuadamente la evolución de la lesión sin incurrir en las distorsiones antes mencionadas. Un factor clave fue que el modelo no recortó ni omitió partes del nódulo en la imagen generada, conservando la forma y extensión completas de la lesión. En algunas imágenes, las lesiones simuladas por el algoritmo incluso añadieron detalles sutiles que concordaban con la progresión real: por ejemplo, se observaron casos iniciales con conglomerados de microcalcificaciones donde la predicción mantuvo e incluso reprodujo correctamente las espiculaciones asociadas a dichas microcalcificaciones, alineándose con lo que se esperaba ver en la imagen de seguimiento real. En ciertos casos destacados (calificados como muy bien), el especialista notó que el modelo logró mostrar lesiones satélite alrededor del nódulo principal, algo que efectivamente estaba presente en la mamografía de control. Estas coincidencias detalladas impresionaron positivamente al evaluador, ya que sugieren que el algoritmo capturó patrones reales de progresión tumoral, resultando en una alta concordancia visual entre la predicción y la realidad.
+\end{enumerate}
+
+En resumen, se observa que la evaluación visual realizada por el especialista sobre los resultados generados por el modelo muestra una recepción mayoritariamente positiva. En conjunto, el 57\% fueron calificados como muy bien (18\%) o bien (39\%), lo que indica un grado de aceptación elevado respecto a la fidelidad visual de las mamografías sintetizadas. Por otro lado, un 33\% de las muestras recibió una calificación de regular, lo que sugiere que, si bien las imágenes generadas fueron aceptables, presentaron ciertas limitaciones o inconsistencias perceptuales que impidieron una evaluación más alta. Finalmente, solo el 10\% recibió una evaluación negativa (mal o muy mal), lo cual representa una proporción reducida de casos en los que el modelo no logró replicar adecuadamente las características clínicas esperadas, como la densidad de los nódulos o la presencia de espiculaciones. Estos resultados, en línea con la retroalimentación cualitativa del especialista, refuerzan que el modelo es capaz de generar imágenes con alto nivel de realismo en la mayoría de los casos, aunque persisten algunos retos en la reproducción precisa de patrones patológicos complejos.
