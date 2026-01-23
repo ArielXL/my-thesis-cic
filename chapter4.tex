@@ -1,0 +1,168 @@
+\chapter{Metodología}
+
+En este capítulo se describe de manera detallada la metodología propuesta para el pronóstico de la progresión de lesiones mamarias en mamografías digitales. La estrategia metodológica abarca desde la preparación y curación de los datos, mediante la construcción de pseudopares de lesiones a partir de la base CBIS-DDSM, hasta el diseño, entrenamiento y validación de un modelo de red generativa adversarial condicional (cGAN) orientado a la síntesis de imágenes mamográficas plausibles en un estado tumoral más avanzado.
+
+Con el objetivo de ofrecer una visión global del enfoque adoptado, la figura \ref{fig:methodology} presenta un esquema resumen de la metodología completa. En dicha figura se ilustran las principales etapas del proceso: la selección de casos, la definición de regiones de interés (ROI), el emparejamiento de lesiones con características radiológicas compatibles, la simulación del crecimiento tumoral mediante criterios cuantitativos, y el entrenamiento del modelo cGAN utilizando los pseudopares generados. Este esquema sirve como guía conceptual para el lector y facilita la comprensión del flujo general del sistema antes de profundizar en cada uno de sus componentes a lo largo del capítulo.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/methodology.png}
+    \caption{Esquema general de la metodología propuesta.}
+    \label{fig:methodology}
+\end{figure}
+
+\section{Sistema para pronóstico} \label{secc: sistema_pronostico}
+
+El objetivo de esta investigación es desarrollar una arquitectura para pronosticar la progresión de lesiones mamarias en mastografías digitales a partir de un estado inicial. Es decir, dada una imagen de mamografía con un tumor (estado actual), el sistema generará una imagen sintética que simula cómo podría verse ese mismo tumor tras un intervalo de tiempo, reflejando un crecimiento plausible de la lesión. Para entrenar dicha arquitectura se requiere un conjunto de ejemplos, específicamente regiones de interés organizadas en pares $(A \to B)$, donde $A$ representa la región de interés de una lesión en su estado inicial, y $B$ la misma lesión en un estado más avanzado. Idealmente, estos pares provendrían de pacientes reales con estudios de mastografía tomados en distintos momentos (por ejemplo, $A$ una mamografía inicial y $B$ otra mamografía de la misma paciente meses después). Sin embargo, no se dispone de un conjunto de datos longitudinal con esas características. Por lo tanto, se diseñó una estrategia para formar pseudopares de lesiones usando datos existentes, simulando así el antes y después de un tumor a partir de distintos casos de pacientes distintas.
+
+En concreto, se emplea la base de datos pública CBIS-DDSM \cite{Lee2017}, descrita en detalle más adelante, para construir los pares pseudopares $(A_i \to B_i)$. La estrategia para generar estos pseudopares de tumores fue la siguiente:
+
+\begin{enumerate}
+    \item Selección de casos de tumor: De la base CBIS-DDSM se extrajeron únicamente las lesiones tipo masa, excluyendo aquellas correspondientes solo a microcalcificaciones u otras anomalías no tumorales. Esto acota el estudio a casos de masas mamarias (benignas o malignas) con sus respectivas máscaras y anotaciones, evitando mezclar patologías de naturaleza distinta.
+
+    \item Definición de la región de interés (ROI): Para cada lesión, se delimitó la región de interés correspondiente en la imagen mamográfica. Usando las máscaras proporcionadas por la base de datos, se recortó un parche de imagen alrededor del tumor, incluyendo un margen suficiente de tejido circundante para proporcionar contexto. De esta manera, cada ejemplo $A$ o $B$ está representado solo por el parche de la lesión en cuestión, en lugar de la mamografía completa. Esta decisión se tomó por dos razones: 
+
+    \begin{itemize}
+        \item Reducir la complejidad computacional del problema (los parches son de menor tamaño que la imagen completa, acelerando el entrenamiento).
+
+        \item Facilitar la formación de pares, al limitarse a la ROI del tumor, se elimina la necesidad de hacer coincidir la ubicación exacta del tumor dentro de la mama o la estructura global de la mama entre $A$ y $B$, algo que sería prácticamente imposible al emparejar imágenes de distintas pacientes.
+    \end{itemize}
+    
+    En resumen, el sistema solo “ve” la lesión y su contexto inmediato, no la mama completa, con esto se asume que la evolución morfológica del tumor puede aprenderse principalmente a partir de esa región localizada.
+
+    \item Emparejamiento de lesiones similares: Para cada imagen de un tumor tomada como candidata para estado inicial $A$, se buscó otra imagen $B$ que pudiera representar un posible estado más avanzado de ese mismo tumor. Para que $A$ y $B$ formen un par plausible, deben compartir características clave de la lesión, asegurando que sean comparables. Específicamente, se exigió que ambas imágenes correspondieran a lesiones tuvieran atributos coincidentes en cuanto a:
+
+    \begin{itemize}
+        \item Tipo de margen de la masa (\textit{mass\_margins}):
+            \begin{enumerate}
+                \item Circunscrito (\textit{circumscribed}): bordes bien definidos, por tanto menos sospechosa.
+                \item Microlobulado (\textit{microlobulated}): pequeños lóbulos en el margen.
+                \item Oscuro (\textit{obscured}): borroso por superposición de tejido.
+                \item Mal definido (\textit{ill\_defined}): mal definidos, por tanto sospechosa.
+                \item Espiculado (\textit{spiculated}): con espículas radiadas, por tanto altamente sospechosa de malignidad.
+            \end{enumerate}
+
+        \item Laterabilidad de la mama (\textit{left\_or\_right\_breast}):
+            \begin{enumerate}
+                \item Izquierdo (\textit{left}): mama izquierda.
+                \item Derecho (\textit{right}): mama derecha.
+            \end{enumerate}
+
+        \item Categoría BI-RADS asignada en la lectura (\textit{assessment}):
+            \begin{enumerate}
+                \item 1: negativo.
+                \item 2: benigno.
+                \item 3: probablemente benigno.
+                \item 4: sospechoso.
+                \item 5: altamente sugestivo de malignidad.
+            \end{enumerate}
+
+        \item Proyección de la mamografía (\textit{image\_view}):
+            \begin{enumerate}
+                \item CC: cranio-caudal, vista superior-inferior.
+                \item MLO: medio-lateral oblicua, vista oblicua.
+            \end{enumerate}
+
+        \item Resultado patológico de la lesión (\textit{pathology}):
+            \begin{enumerate}
+                \item Benigno (\textit{benign}): lesión no cancerígena
+                \item Maligno (\textit{malignant}): Confirmada como cáncer
+            \end{enumerate}
+
+        \item Densidad del tejido mamario (\textit{breast\_density}):
+            \begin{enumerate}
+                \item 1: grasa casi completamente y muy baja densidad.
+                \item 2: áreas dispersas de tejido fibroglandular.
+                \item 3: heterogéneamente densa y puede ocultar lesiones.
+                \item 4: extremadamente densa y dificulta la detección en mamografía.
+            \end{enumerate}
+
+        \item Forma geométrica de la masa (\textit{mass\_shape}):
+            \begin{enumerate}
+                \item Ovalada (\textit{oval}): forma ovalada y tiende a ser menos sospechosa.
+                \item Redonda (\textit{round}): forma redonda y a veces benigna.
+                \item Lobulada (\textit{lobulated}): con bordes lobulados.
+                \item Irregular (\textit{irregular}): bordes irregulares y más sospechosa.
+                \item Distorsión arquitectónica (\textit{architectural distortion}): distorsión estructural sin masa definida.
+                \item Distorsión arquitectónica irregular (\textit{irregular architectural distortion}): híbrido entre masa irregular y distorsión.
+            \end{enumerate}
+    \end{itemize}
+
+    Al imponer que $A$ y $B$ coincidan en estos atributos, nos aseguramos de que ambas imágenes representen lesiones del mismo tipo en contextos anatómicos. Esto simula la idea de analizar el mismo tumor en dos momentos distintos, por ejemplo, dos masas malignas espiculadas en tejido denso y BI-RADS 5, una más pequeña y otra más grande.
+
+    \item Simulación de crecimiento tumoral: Además de compartir las características anteriores, se requiere un incremento de tamaño entre la lesión $A$ (inicial) y la lesión $B$ (posterior). En la práctica, medimos el área de cada tumor usando su máscara de segmentación; para que $B$ sea elegida como pareja de $A$, el área (número de píxeles) de la masa en $B$ debe ser al menos un 20\% mayor que el área de la masa en $A$. Este criterio cuantitativo introduce la noción de crecimiento, asegurando que $B$ efectivamente luzca como una progresión de $A$ en tamaño. Si bien el umbral de 20\% es arbitrario, proporciona un punto de corte razonable para considerar que el cambio es significativo (un tumor apenas más grande podría no ser perceptible como avance, mientras que uno mucho más grande quizás introduciría demasiadas diferencias). Con este paso, validamos que la pareja $(A, B)$ cumple tanto con similitud de características como con diferencia de tamaño suficiente para modelar progresión.
+
+    \item Formación del conjunto de pares: Siguiendo el procedimiento anterior, se procesaron todas las lesiones de tipo masa disponibles en CBIS-DDSM. Cada lesión actúa, en la medida de lo posible, como imagen $A$ inicial y se le asigna una imagen $B$ correspondiente que satisfaga los criterios. En algunos casos, una lesión muy grande en la base de datos no tendrá una contraparte mayor (porque podría ser la de mayor tamaño en su categoría); esas lesiones no pueden formar un par $A \to B$. En otros casos, una misma imagen con tumor grande podría servir como imagen tipo $B$ para varias imágenes tipo $A$ con tumores más pequeños compatibles en características. Tras iterar sobre todos los casos, se logró compilar un total de 2504 pares $(A_i \to B_i)$ de lesiones, que conforman nuestro conjunto de datos de entrenamiento. Cada par es tratado como si proviniera de la misma paciente en dos tiempos distintos, aunque en realidad son de pacientes diferentes; por ello los llamamos pseudopares.
+\end{enumerate}
+
+Cabe enfatizar que estos pseudopares conllevan una suposición importante, asumimos que, dado suficiente tiempo, todos los tumores crecerán en tamaño, manteniendo sus demás características constantes. Evidentemente, en la realidad clínica pueden ocurrir otras situaciones (lesiones que no crecen, o incluso reducen tamaño por tratamiento, cambios de morfología, etc.), pero en esta etapa inicial optamos por la hipótesis simplificadora de crecimiento monótono. No definimos un intervalo de tiempo fijo entre $A$ y $B$, es decir, no sabemos si el crecimiento del 20\% correspondería a 6 meses, 1 año u otro período, ya que distintas lesiones tienen ritmos de crecimiento muy variables. Simplemente, la metodología empareja cada tumor con otro más grande sin asociarle una etiqueta temporal. Si se hubiese intentado fijar, por ejemplo, “progresión a 6 meses”, se tendría que haber ajustado el criterio de tamaño según el tipo de tumor (algunos crecen lentamente, otros rápido), lo cual introduciría múltiples supuestos adicionales. La aproximación en esta tesis evita eso, utilizando el tamaño como sustituto de la progresión temporal de forma uniforme para todos los casos.
+
+% Adicionalmente, se reaizó una validación cualitativa de los pseudopares con ayuda de un experto en radiología mamaria. Para ello, se desarrolló una interfaz gráfica que muestra cada par $(A, B)$ lado a lado, permitiendo al radiólogo marcar si considera que $B$ podría ser razonablemente la misma lesión que $A$ en un tiempo posterior. Se examinó así una muestra representativa de pares, en general, la mayoría fueron aprobados por el experto como progresiones plausibles, mientras que algunos fueron rechazados por mostrar diferencias atípicas (por ejemplo, cambios de forma muy drásticos no atribuibles solo al crecimiento). Esta retroalimentación permitió confirmar que la metodología de emparejamiento, a pesar de sus limitaciones, tiene sentido médico en una proporción elevada de casos, validando su uso para entrenar el modelo. Los comentarios del experto se tomaron en cuenta para refinar la selección de algunos pares antes de proceder con el entrenamiento definitivo.
+
+\subsection{Interfaz para la validación cualitativa de pseudopares}
+
+Adicionalmente (figura \ref{fig:review_pairs}), se realizó una validación cualitativa de los pseudopares con ayuda de un experto en radiología mamaria. Para ello, se desarrolló una interfaz gráfica que muestra cada par $(A,B)$ lado a lado, permitiendo al radiólogo marcar si considera que $B$ podría corresponder razonablemente a la misma lesión que $A$ en un tiempo posterior. Se examinó así una muestra representativa de pares; en general, la mayoría fueron aprobados por el experto como progresiones plausibles, mientras que algunos fueron rechazados por mostrar diferencias atípicas (por ejemplo, cambios de forma muy drásticos no atribuibles únicamente al crecimiento). Esta retroalimentación permitió confirmar que la metodología de emparejamiento, a pesar de sus limitaciones, tiene sentido médico en una proporción elevada de casos, validando su uso para entrenar el modelo. Los comentarios del experto se tomaron en cuenta para refinar la selección de algunos pares antes de proceder con el entrenamiento definitivo.
+
+Desde el punto de vista de implementación, la herramienta se desarrolló íntegramente en \textit{python} utilizando la librería \textit{streamlit}, que permite construir interfaces web interactivas de forma rápida a partir de scripts de Python. Los pares de imágenes se describen en un archivo \textit{excel} que contiene, para cada caso, las rutas de la imagen inicial $A$ y la imagen candidata $B$. Este archivo se carga en memoria mediante \textit{pandas}, y la aplicación recorre fila por fila mostrando en la ventana principal ambas imágenes alineadas en dos columnas. Para mejorar la legibilidad, en la tabla de resumen sólo se muestra el nombre de archivo, ocultando las rutas completas del sistema de ficheros.
+
+La interfaz incorpora controles de navegación para facilitar el trabajo del especialista: botones para avanzar y retroceder entre pares, así como opciones para limpiar la decisión del par actual o reiniciar todas las decisiones almacenadas. Para anotar la calidad de cada pseudopar se implementó un selector categórico con dos niveles (aceptar y rechazar), acompañados de emojis que facilitan una clasificación rápida e intuitiva. Las decisiones del experto se registran en una columna adicional del mismo \textit{excel}, que se actualiza dinámicamente conforme se avanza en la revisión, de forma que al finalizar se dispone de un registro estructurado de las evaluaciones sin requerir pasos manuales extra.
+
+Finalmente, la aplicación fue desplegada en la nube utilizando \textit{Streamlit Community Cloud}, un servicio gratuito que permite ejecutar y compartir aplicaciones desarrolladas con \textit{Streamlit} sin necesidad de infraestructura adicional. Este despliegue facilitó que el radiólogo pudiera acceder a la herramienta desde cualquier equipo con navegador web, eliminando dependencias locales y permitiendo una colaboración más fluida y práctica durante el proceso de validación.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/review_pairs.png}
+    \caption{Captura de la interfaz web Revisión de pares para CBIS - DDSM.}
+    \label{fig:review_pairs}
+\end{figure}
+
+Finalmente, con el objetivo de garantizar la reproducibilidad y transparencia del proceso de validación cualitativa, el código fuente completo de la interfaz desarrollada se encuentra disponible públicamente en un repositorio de \textit{GitHub}. Dicho repositorio incluye los scripts en \textit{Python}, la implementación de la interfaz en \textit{Streamlit}, así como instrucciones básicas para su ejecución y despliegue. El acceso al código permite que otros investigadores puedan revisar, reutilizar o extender la herramienta propuesta en contextos similares. El repositorio puede consultarse en el siguiente enlace: \url{https://github.com/ArielXL/review-results}.
+
+\section{Red generativa adversarial condicional (cGAN)}
+
+Para modelar la transformación de $A$ (lesión inicial) en $B$ (lesión evolucionada), se utiliza una Red Generativa Adversarial condicional (cGAN) entrenada con los pares previamente descritos. La cGAN aprende la función de mapeo $G: A \rightarrow B$ tal que, dada una imagen de entrada $A$, genere una imagen sintética $\hat{B} = G(A)$ que resulte realista y coherente con la lesión inicial. El diseño de la red está basado en la arquitectura propuesta en \cite{Isola2016} para problemas de traducción de imagen a imagen (conocida como \textit{pix2pix}), adaptándola al contexto de mamografías. En términos generales, la arquitectura consta de un generador y un discriminador entrenados de forma adversarial, incorporando además la imagen $A$ como condición explícita en ambos.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/u_net.png}
+    \caption{Esquema del generador U-Net.}
+    \label{fig:u_net}
+\end{figure}
+
+Para la arquitectura del generador (ver figura \ref{fig:u_net}) se emplea un modelo de tipo U-Net \cite{He2015}, que es esencialmente un codificador-decodificador con \textit{skip connections} simétricas entre las capas de codificación y decodificación. El generador toma como entrada el parche de la lesión inicial $A$ (en escala de grises, normalizado entre -1 y 1) con tamaño $256\times256$ píxeles, y produce como salida una imagen $B$ sintética de las mismas dimensiones. Durante la fase codificadora, la imagen pasa por sucesivas capas convolucionales con \textit{downsampling}, reduciendo su dimensión espacial y capturando características de mayor nivel. Luego, en la fase decodificadora, se aplican convoluciones transpuestas (\textit{upsampling}) para reconstruir una imagen del mismo tamaño que la original. Las \textit{skip connections} unen cada capa del \textit{encoder} con su análoga del \textit{decoder}, concatenando sus mapas de activación. Estas conexiones directas permiten que el generador transporte detalles de bajo nivel desde la entrada hasta la salida, preservando la estructura principal de la imagen (bordes de la lesión, texturas locales del tejido) que de otro modo podrían perderse al pasar por el ``cuello de botella'' del \textit{encoder}. En esencia, el generador U-Net aprende a modificar el tumor inicial para que parezca más grande o más avanzado, pero manteniendo el contexto visual alrededor consistente con el original.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Images/patch_gan.png}
+    \caption{Esquema del discriminador PatchGAN.}
+    \label{fig:patch_gan}
+\end{figure}
+
+En el caso del discriminador (figura \ref{fig:patch_gan}) se utiliza como arquitectura un discriminador convolucional tipo PatchGAN. A diferencia de un discriminador tradicional que emite una única decisión sobre la imagen completa, el PatchGAN clasifica pequeños parches de la imagen como reales o falsos. En nuestro caso, el discriminador recibe como entrada un par de imágenes $(A, X)$, donde $A$ es la imagen inicial (condición) y $X$ puede ser bien la imagen real $B$ o la imagen generada $\hat{B}$. El discriminador procesa la combinación $(A, X)$ mediante una serie de capas convolucionales y produce una matriz de salidas, donde cada valor corresponde a la probabilidad de autenticidad de un parche de $70\times70$ píxeles de $X$ dado el contexto de $A$. El razonamiento de este enfoque es que comprobar la verosimilitud local de la imagen (apariencia de la textura del tumor, bordes, ruidos) es suficiente para garantizar realismo global. Un PatchGAN con tamaño de parche 70 ha demostrado ser efectivo en múltiples tareas de traducción de imágenes, logrando un buen balance entre calidad de detalle y capacidad de entrenamiento \cite{teixeira2018}. El discriminador sigue esta configuración, tiene una arquitectura totalmente convolucional con un campo receptivo efectivo de aproximadamente 70 px, e incorpora a $A$ concatenado con $X$ en los canales de entrada para evaluar la consistencia condicional (verifica no solo si $X$ parece real, sino si corresponde creíblemente a la imagen $A$ suministrada).
+
+Función de pérdida y criterio de entrenamiento: Entrenar la cGAN implica optimizar dos redes en competencia. Para guiar este proceso, se utiliza una función de pérdida compuesta que combina un término adversarial y un término de consistencia de imagen. Por un lado, el término adversarial $\mathcal{L}_{GAN}$ sigue la formulación típica de \cite{Goodfellow2014} y el discriminador $D$ es entrenado para clasificar como real a los pares $(A, B)$ y como falso a los pares $(A, \hat{B})$ generados, mientras que el generador $G$ es entrenado para engañar al discriminador (hacer que $(A, \hat{B})$ sea clasificado como real). En la práctica, se usa la pérdida binaria de entropía cruzada tanto para $D$ como para $G$, por un lado $D$ maximiza $\log D(A,B) + \log[1 - D(A,\hat{B})]$ y $G$ maximiza $\log D(A,\hat{B})$. Por otro lado, añadimos un término de pérdida $L1$ (error absoluto medio) entre la imagen generada y la imagen real objetivo: $\mathcal{L}_{L1} = ||B - \hat{B}||_{1}$. Este término actúa como regularizador, incentivando al generador a que su salida no se desvíe demasiado de la imagen real conocida durante el entrenamiento. La razón de incluir $\mathcal{L}_{L1}$ es que sin ellas, las pérdidas adversariales pueden enfocarse solo en el realismo, ignorando detalles estructurales importantes; con la penalización $L1$, obligamos a $G$ a preservar la estructura básica de $A$ al generar $\hat{B}$ (por ejemplo, la ubicación y forma aproximada del tumor o patrones de fondo). La pérdida total del generador queda definida como:
+
+\begin{equation}
+    \mathcal{L}_{G} = \mathcal{L}_{GAN}(G) + \lambda \cdot \mathcal{L}_{L1}(G)
+\end{equation}
+donde $\lambda$ es un factor de penalización. Siguiendo a \cite{Isola2016}, fijamos $\lambda = 100$ para dar mucho más peso a la fidelidad de la reconstrucción $L1$ sin dejar de mejorar el realismo con la GAN. Con este valor, en trabajos previos se observó que la combinación entre $L1$ y la GAN produce imágenes más nítidas y realistas que usar solo $L1$ (que tiende a imágenes borrosas) o solo GAN (que puede introducir artefactos). En resumen, el discriminador $D$ minimiza su pérdida $\mathcal{L}_D$ adversarial estándar, mientras que el generador $G$ minimiza una pérdida compuesta $\mathcal{L}_G$ que le exige generar imágenes lo bastante reales para confundir a $D$ a la vez que similares a la verdad de referencia.
+
+\section{Base de datos}
+
+Para realizar esta investigación se utilizó la base de datos Curated Breast Imaging Subset of DDSM (CBIS-DDSM) \cite{Lee2017}, un amplio conjunto público de imágenes mamográficas digitalizadas. A continuación, se describen sus características relevantes y la forma en que preparamos los datos para el entrenamiento y evaluación de nuestro modelo.
+
+\subsection{Características de CBIS-DDSM}
+
+CBIS-DDSM es un subconjunto curado de la histórica base DDSM (\textit{Digital Database for Screening Mammography}). Fue publicado en 2017 a través del repositorio \textit{The Cancer Imaging Archive} \cite{Lee2017} como parte de un esfuerzo por mejorar la calidad y utilidad del DDSM original. En esta versión curada se filtraron las mamografías de baja calidad técnica y se reformatearon todas las imágenes a estándares modernos, eliminando algunos de los inconvenientes del DDSM (que contenía imágenes en formato obsoleto y con segmentaciones inconsistentes). Este conjunto de datos proporciona las mamografías en archivos DICOM (formato médico estándar), junto con metadatos detallados y anotaciones precisas de las lesiones. En particular, incluye máscaras delineando la región de interés de cada lesión y la etiqueta diagnóstica correspondiente.
+
+El conjunto abarca imágenes de mamografías de pacientes con diagnóstico normal, benigno y maligno, cubriendo las vistas que componen un estudio de mastografía estándar (MLO y CC) de lateralidad derecha e izquierda, aunque cabe mencionar que en algunos casos pueden tener imágenes faltantes, por ejemplo, cuando a una paciente se le ha realizado una mastectomía. En total, CBIS-DDSM está compuesto por 10,239 imágenes provenientes de 6,671 estudios a 1,566 pacientes. Estas imágenes se dividen en dos categorías principales de anomalías: masas y calcificaciones. La base curada reporta contener 891 casos de masas y 753 casos de microcalcificaciones (un “caso” es una anomalía que corresponde aproximadamente a una paciente, aunque una paciente puede presentar más de una anomalía donde aporta varias imágenes de distintas vistas). Cada caso de anomalía incluye las imágenes mamográficas pertinentes y las anotaciones mencionadas. Gracias a la curación, las segmentaciones de las lesiones son mucho más confiables que en DDSM original, lo cual resulta crítico para entrenar algoritmos que dependan de la localización exacta del tumor, como es nuestro caso.
+
+Para nuestros experimentos, nos enfocamos exclusivamente en la porción de masas de CBIS-DDSM, ya que el objetivo es pronosticar la progresión de tumores (y no de microcalcificaciones u otras lesiones). Dentro de esta categoría se incluyen tanto masas benignas como malignas, cubriendo una variedad de presentaciones (formas, márgenes, tamaños y densidades mamarias diversas). Contar con casos benignos y malignos es beneficioso porque brinda al modelo ejemplos de diferentes comportamientos, desde tumores benignos que suelen tener crecimientos más limitados, hasta malignos que pueden ser más agresivos. Además, al incluir masas de distintos tamaños iniciales, el modelo puede aprender una distribución más amplia de posibles progresiones. En todos los casos, utilizamos las ROI de las masas provistas, es decir, trabajamos con los parches de imagen centrados en cada tumor y enmascarados (aunque en la entrada al modelo usamos la imagen sin máscara, la máscara solo se empleó para extracción de la ROI y cálculo de medidas como el área). La intensidad de pixel de las mamografías fue normalizada (ventana de nivel de gris apropiada y posteriormente escala [0,1] o [-1,1] según requería la red neuronal), manteniendo el contraste relativo de la lesión contra el tejido circundante.
+
+\subsection{Partición para entrenamiento y evaluación}
+
+Una vez formados los 2504 pares de imágenes $A \to B$ (como se detalló en la sección \ref{secc: sistema_pronostico}), dividimos el conjunto en dos subconjuntos para llevar a cabo el entrenamiento y la posterior evaluación del modelo. El 80\% de los pares (aproximadamente 2000 pares) se utilizó para el entrenamiento de la cGAN, mientras que el 20\% restante (unos 500 pares) se reservó para la evaluación final del sistema. Esta partición se hizo de forma aleatoria pero estratificada, asegurando que la proporción de casos benignos/malignos y la distribución de tamaños de tumores se mantuviera similar en ambos subconjuntos. Asimismo, se tomó cuidado de que no hubiera traslape de imágenes entre los conjuntos: si una imagen de mamografía particular aparecía como $A$ o $B$ en un par de entrenamiento, ninguna imagen del mismo caso (misma paciente) fue incluida en los pares de validación, previniendo así cualquier filtración de información que afectara los resultados.
+
+El conjunto de entrenamiento (80\%) fue empleado para ajustar los pesos de la red generativa adversarial siguiendo el procedimiento descrito anteriormente. Durante el entrenamiento, no se evaluó el desempeño del modelo generador $G$ sobre las imágenes de validación, sino hasta completar las épocas planificadas (o hasta cumplir algún criterio de parada anticipada basado en la convergencia de la pérdida). Finalmente, el conjunto de prueba (20\%) sirvió para medir el rendimiento del modelo ya entrenado. Con este conjunto separado, se generaron las imágenes pronosticadas $\hat{B}$ para cada $A$ de prueba, comparándolas con las verdaderas $B$ correspondientes que el modelo no había visto. Los resultados de esta evaluación se presentan en el capítulo siguiente, donde se analizan tanto cuantitativamente (mediante métricas objetivas) como cualitativamente (mediante inspección por expertos) la calidad, realismo y plausibilidad de las imágenes generadas por nuestro sistema.
+
+En resumen, la metodología desarrollada cubre desde la preparación de datos (construcción de pseudopares de lesiones usando CBIS-DDSM), pasando por el diseño e implementación del modelo cGAN para pronóstico de imágenes, hasta la configuración del entrenamiento y la estrategia de validación. En los capítulos siguientes se discutirán los resultados obtenidos con este enfoque y se establecerán comparativas con trabajos previos, así como las conclusiones y trabajos futuros derivados de esta investigación.
